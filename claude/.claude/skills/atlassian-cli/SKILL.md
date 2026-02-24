@@ -74,6 +74,18 @@ acli jira workitem comment list --key KEY-123 --json
 acli jira workitem link list --key KEY-123 --json
 ```
 
+## Jira
+
+| Key | Value |
+|-----|-------|
+| Instance | `https://wealthwizards.atlassian.net` |
+| Cloud ID | `a11228d2-ede1-43ab-8066-d739b73c33f8` |
+| REST base | `https://wealthwizards.atlassian.net/rest/api/3` |
+| Project key | `PAC` |
+| Board ID | `1725` |
+| Board URL | https://wealthwizards.atlassian.net/jira/software/c/projects/PAC/boards/1725 |
+| Issue URL | `https://wealthwizards.atlassian.net/browse/{issueKey}` |
+
 ## Remediation
 
 | Problem | Fix |
