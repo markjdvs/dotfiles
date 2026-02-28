@@ -27,13 +27,46 @@ Not found → direct user to: https://developer.atlassian.com/cloud/acli/guides/
 acli jira auth status
 ```
 
-Not authenticated → `acli jira auth login`
+Not authenticated → follow the **Token Setup** section below, then run login.
 
-**3. Scope safety check:**
+**3. Token type warning:**
 
-Tell the user: "Please confirm your `acli` API token has only `read:jira-work` scope. Tokens that also include `write:jira-work` can modify issues. The CLI cannot programmatically verify scopes — this must be confirmed at token setup time."
+Inform the user: "`acli` does **not** support scoped API tokens — it uses the classic `.atlassian.net` endpoint format internally, which Atlassian rejects for scoped tokens. You must use a **classic (unscoped)** API token. Mitigate risk by storing it in the macOS Keychain (never in a file or shell history) and rotating it periodically."
 
-If the user is unsure, ask them to verify before continuing.
+## Token Setup (first-time only)
+
+**1. Create a classic API token** at https://id.atlassian.com/manage-profile/security/api-tokens
+   - Click **Create API token** → choose **Classic** (not Scoped)
+   - Copy the token immediately — it won't be shown again
+
+**2. Store it in the macOS Keychain** (never in a plaintext file):
+
+```bash
+security add-generic-password \
+  -a "your@email.com" \
+  -s "acli-jira-token" \
+  -w
+```
+
+It will prompt for the token interactively (not echoed to the terminal).
+
+**3. Authenticate `acli` using the Keychain value:**
+
+```bash
+security find-generic-password -a "your@email.com" -s "acli-jira-token" -w \
+  | acli jira auth login \
+      --site "yoursite.atlassian.net" \
+      --email "your@email.com" \
+      --token
+```
+
+All three flags (`--site`, `--email`, `--token`) are required — omitting any one causes `acli` to fall back to the interactive wizard.
+
+**To verify the token was stored correctly:**
+
+```bash
+security find-generic-password -a "your@email.com" -s "acli-jira-token" -w
+```
 
 ## Phase 2: Fetch Core
 
