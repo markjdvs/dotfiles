@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Auto-run init.sh after git pull/merge
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+echo ""
+echo "Running dotfiles initialization..."
+"$DOTFILES_DIR/init.sh"
