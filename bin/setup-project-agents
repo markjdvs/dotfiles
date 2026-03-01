@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-project-agents - Link shared agents to a project's .claude directory
+# setup-agents - Link shared agents
 # Usage: setup-project-agents <project-path> [tool]
 #   tool defaults to 'claude' but can be 'cursor', etc.
 
@@ -12,33 +12,33 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 log_info() {
-    echo -e "${BLUE}→${NC} $1"
+  echo -e "${BLUE}→${NC} $1"
 }
 
 log_success() {
-    echo -e "${GREEN}✓${NC} $1"
+  echo -e "${GREEN}✓${NC} $1"
 }
 
 log_error() {
-    echo -e "${RED}✗${NC} $1"
+  echo -e "${RED}✗${NC} $1"
 }
 
 usage() {
-    echo "Usage: setup-project-agents <project-path> [tool]"
-    echo ""
-    echo "Arguments:"
-    echo "  project-path    Path to the project directory"
-    echo "  tool            Tool name (default: claude, can be: cursor, etc.)"
-    echo ""
-    echo "Examples:"
-    echo "  setup-project-agents ~/projects/myapp"
-    echo "  setup-project-agents ~/projects/myapp cursor"
-    echo "  setup-project-agents . claude"
-    exit 1
+  echo "Usage: setup-project-agents <project-path> [tool]"
+  echo ""
+  echo "Arguments:"
+  echo "  project-path    Path to the project directory"
+  echo "  tool            Tool name (default: claude, can be: cursor, etc.)"
+  echo ""
+  echo "Examples:"
+  echo "  setup-project-agents ~/projects/myapp"
+  echo "  setup-project-agents ~/projects/myapp cursor"
+  echo "  setup-project-agents . claude"
+  exit 1
 }
 
 if [ -z "$1" ]; then
-    usage
+  usage
 fi
 
 PROJECT_PATH="$(cd "$1" && pwd)"
@@ -49,8 +49,8 @@ log_info "Setting up $TOOL agents for project: $(basename "$PROJECT_PATH")"
 
 # Check if agents directory exists
 if [ ! -d "$AGENTS_BASE" ]; then
-    log_error "Agents directory not found: $AGENTS_BASE"
-    exit 1
+  log_error "Agents directory not found: $AGENTS_BASE"
+  exit 1
 fi
 
 # Create tool directory if it doesn't exist
@@ -58,16 +58,16 @@ mkdir -p "$TOOL_DIR"
 
 # Link each directory
 for dir in agents skills rules commands; do
-    if [ -d "$AGENTS_BASE/$dir" ]; then
-        TARGET="$AGENTS_BASE/$dir"
-        LINK="$TOOL_DIR/$dir"
+  if [ -d "$AGENTS_BASE/$dir" ]; then
+    TARGET="$AGENTS_BASE/$dir"
+    LINK="$TOOL_DIR/$dir"
 
-        # Remove existing if present
-        [ -e "$LINK" ] && rm -rf "$LINK"
+    # Remove existing if present
+    [ -e "$LINK" ] && rm -rf "$LINK"
 
-        ln -sf "$TARGET" "$LINK"
-        log_success "Linked .$TOOL/$dir → $TARGET"
-    fi
+    ln -sf "$TARGET" "$LINK"
+    log_success "Linked .$TOOL/$dir → $TARGET"
+  fi
 done
 
 echo ""
