@@ -1,1 +1,10 @@
-theme = shades-of-purple
+theme                 = Catppuccin Mocha
+
+background-opacity    = 0.95
+background-blur       = 16
+macos-titlebar-style  = hidden
+
+font-size             = 14
+font-thicken          = true
+font-thicken-strength = 1
+adjust-cell-height    = 1
