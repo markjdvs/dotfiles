@@ -28,3 +28,6 @@ alias gfp="git fetch && git pull"
 alias c="cursor ."
 alias d="cd $HOME/src/personal/dotfiles"
 alias z="source $HOME/.zshrc"
+
+alias nm_check="find . -name 'node_modules' -type d -prune"
+alias nm_delete="find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
