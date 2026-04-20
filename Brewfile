@@ -19,3 +19,4 @@ brew "imagemagick"
 brew "stow"
 
 cask "cursor"
+cask "docker"
