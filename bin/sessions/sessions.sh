@@ -31,21 +31,17 @@ get_project_dirs() {
 }
 
 build_candidates() {
-  local -A seen_sessions
-
-  # Mark all active sessions
-  while IFS= read -r session; do
-    [[ -n "$session" ]] && seen_sessions["$session"]=1
-  done < <(get_active_sessions)
+  local active_sessions
+  active_sessions=$(get_active_sessions)
 
   # Output active sessions first
-  for session in "${!seen_sessions[@]}"; do
-    echo "$session"
-  done
+  if [[ -n "$active_sessions" ]]; then
+    echo "$active_sessions"
+  fi
 
   # Output project directories that don't have active sessions
   while IFS= read -r project; do
-    if [[ -z "${seen_sessions[$project]:-}" ]]; then
+    if ! echo "$active_sessions" | grep -qxF "$project"; then
       echo "$project"
     fi
   done < <(get_project_dirs)
@@ -69,24 +65,27 @@ create_session() {
   local project_path="$2"
 
   # Create session with Phase 2 template: two windows with standard layout
-  # Window 1 - Editor: neovim (left) + claude (right)
-  tmux new-session -d -s "$session_name" -c "$project_path" -n "editor"
-  tmux send-keys -t "$session_name:editor" "nvim ." Enter
-  tmux split-window -h -t "$session_name:editor" -c "$project_path"
-  tmux send-keys -t "$session_name:editor.1" "claude" Enter
+  # Use window indices instead of names — tmux misparses named targets
+  # when session names contain /
 
-  # Window 2 - Development: dev server (left) + logs (right)
+  # Window 0 - Editor: neovim (left) + claude (right)
+  tmux new-session -d -s "$session_name" -c "$project_path" -n "editor"
+  tmux send-keys -t "$session_name:0" "nvim ." Enter
+  tmux split-window -h -t "$session_name:0" -c "$project_path"
+  tmux send-keys -t "$session_name:0.1" "claude" Enter
+
+  # Window 1 - Development: dev server (left) + logs (right)
   tmux new-window -t "$session_name" -n "dev" -c "$project_path"
-  tmux split-window -h -t "$session_name:dev" -c "$project_path"
+  tmux split-window -h -t "$session_name:1" -c "$project_path"
 
   # Focus back on editor window
-  tmux select-window -t "$session_name:editor"
-  tmux select-pane -t "$session_name:editor.0"
+  tmux select-window -t "$session_name:0"
+  tmux select-pane -t "$session_name:0.0"
 }
 
 main() {
   # Build and present candidates via television
-  selection=$(build_candidates | sort -u | tv)
+  selection=$(build_candidates | sort -u | tv --input-header "Sessions" --no-preview --no-remote)
 
   # Exit if no selection
   [[ -z "$selection" ]] && exit 0
