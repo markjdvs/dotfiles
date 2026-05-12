@@ -19,7 +19,7 @@ stream_text='select(.type == "assistant").message.content[]? | select(.type == "
 # jq filter to extract final result
 final_result='select(.type == "result").result // empty'
 
-for ((i=1; i<=$2; i++)); do
+for ((i = 1; i <= $2; i++)); do
   tmpfile=$(mktemp)
   trap "rm -f $tmpfile" EXIT
 
@@ -30,10 +30,10 @@ for ((i=1; i<=$2; i++)); do
     --verbose \
     --print \
     --output-format stream-json \
-    "Previous commits: $commits Plan and PRD: $1 $prompt" \
-  | grep --line-buffered '^{' \
-  | tee "$tmpfile" \
-  | jq --unbuffered -rj "$stream_text"
+    "Previous commits: $commits Plan and PRD: $1 $prompt" |
+    grep --line-buffered '^{' |
+    tee "$tmpfile" |
+    jq --unbuffered -rj "$stream_text"
 
   result=$(jq -r "$final_result" "$tmpfile")
 
