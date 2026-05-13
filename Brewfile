@@ -1,5 +1,6 @@
 cask_args appdir: '/Applications'
 
+brew "git-delta"
 brew "lazygit"
 brew "hurl"
 brew "neovim"
