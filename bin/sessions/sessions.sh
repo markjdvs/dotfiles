@@ -232,6 +232,121 @@ get_branch_list() {
   } | sort -u
 }
 
+# --- Subcommand: finish-task ---
+
+cmd_finish_task() {
+  # Tear down the current task in a single action
+  # Pushes branch, removes worktree, deletes local branch, kills session
+
+  # Step 1: Capture current session name
+  local session_name
+  session_name=$(tmux display-message -p '#{session_name}')
+
+  # Validate this is a task session (3+ /-separated segments)
+  local slash_count
+  slash_count=$(echo "$session_name" | tr -cd '/' | wc -c)
+  if [[ "$slash_count" -lt 2 ]]; then
+    gum style --foreground 196 "Error: Not a task session."
+    gum style "finish-task can only be run from a task session (parent/project/branch)."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Step 2: Parse project path and branch name from session name
+  local parent project branch_name
+  parent="${session_name%%/*}"
+  local rest="${session_name#*/}"
+  project="${rest%%/*}"
+  branch_name="${rest#*/}"
+
+  # Resolve project base path
+  local project_path=""
+  for base_dir in "${PROJECT_DIRS[@]}"; do
+    if [[ "$(basename "$base_dir")" == "$parent" ]]; then
+      project_path="$base_dir/$project"
+      break
+    fi
+  done
+
+  if [[ -z "$project_path" || ! -d "$project_path" ]]; then
+    gum style --foreground 196 "Error: Could not resolve project path for: $session_name"
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  local worktree_path="$project_path/.worktrees/$branch_name"
+
+  if [[ ! -d "$worktree_path" ]]; then
+    gum style --foreground 196 "Error: Worktree not found: $worktree_path"
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Step 3: Check for uncommitted changes in the worktree
+  if ! git -C "$worktree_path" diff --quiet 2>/dev/null || \
+     ! git -C "$worktree_path" diff --cached --quiet 2>/dev/null; then
+    gum style --foreground 196 "Error: Uncommitted changes detected in worktree."
+    gum style "Commit or stash your changes before finishing the task."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Also check for untracked files that might be important
+  local untracked_count
+  untracked_count=$(git -C "$worktree_path" ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$untracked_count" -gt 0 ]]; then
+    gum style --foreground 208 "Warning: $untracked_count untracked file(s) in worktree."
+    if ! gum confirm "Continue anyway?"; then
+      exit 0
+    fi
+  fi
+
+  # Step 4: Display task session name and prompt user to type it to confirm
+  gum style --bold --foreground 196 "⚠️  DESTRUCTIVE ACTION"
+  gum style ""
+  gum style "This will:"
+  gum style "  • Push branch '$branch_name' to remote"
+  gum style "  • Kill session '$session_name'"
+  gum style "  • Remove worktree at: $worktree_path"
+  gum style "  • Delete local branch '$branch_name'"
+  gum style ""
+  gum style --foreground 208 "Type the full session name to confirm:"
+  gum style --faint "$session_name"
+  gum style ""
+
+  local confirmation
+  confirmation=$(gum input --placeholder "Type session name to confirm")
+
+  if [[ "$confirmation" != "$session_name" ]]; then
+    gum style --foreground 208 "Confirmation did not match. Aborting."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 0
+  fi
+
+  # Step 5: Push branch to remote
+  gum style "Pushing branch to remote..."
+  if ! git -C "$worktree_path" push origin "$branch_name" 2>&1; then
+    gum style --foreground 208 "Warning: Failed to push branch. Continuing with cleanup..."
+  fi
+
+  # Step 6: Switch to last session (before killing current session)
+  # This may fail if no other session exists - that's OK
+  tmux switch-client -l 2>/dev/null || true
+
+  # Step 7: Kill the task session
+  tmux kill-session -t "$session_name" 2>/dev/null || true
+
+  # Step 8: Remove the worktree
+  gum style "Removing worktree..."
+  git -C "$project_path" worktree remove "$worktree_path" --force 2>/dev/null || true
+
+  # Step 9: Delete the local branch (never delete remote)
+  gum style "Deleting local branch..."
+  git -C "$project_path" branch -D "$branch_name" 2>/dev/null || true
+
+  gum style --foreground 76 "✓ Task finished successfully."
+}
+
 # --- Subcommand: list-tasks ---
 
 get_active_task_sessions() {
@@ -457,8 +572,7 @@ main() {
       cmd_create_task
       ;;
     finish-task)
-      echo "Error: finish-task not yet implemented" >&2
-      exit 1
+      cmd_finish_task
       ;;
     *)
       usage

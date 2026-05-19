@@ -108,13 +108,13 @@ Add a `finish-task` subcommand that tears down the current task in a single acti
 
 ### Acceptance criteria
 
-- [ ] `C-a X` opens the finish-task flow in a popup
-- [ ] If the worktree has uncommitted changes, the flow refuses and warns
-- [ ] The user must type the full task session name to confirm
-- [ ] Mistyped confirmation aborts the flow
-- [ ] The branch is pushed to remote before cleanup
-- [ ] The task session is killed
-- [ ] The worktree is removed
-- [ ] The local branch is deleted
-- [ ] The remote branch is never deleted
-- [ ] After cleanup, the client is switched to the last session (or tmux handles session selection naturally if no other session exists)
+- [x] `C-a X` opens the finish-task flow in a popup
+- [x] If the worktree has uncommitted changes, the flow refuses and warns
+- [x] The user must type the full task session name to confirm
+- [x] Mistyped confirmation aborts the flow
+- [x] The branch is pushed to remote before cleanup
+- [x] The task session is killed
+- [x] The worktree is removed
+- [x] The local branch is deleted
+- [x] The remote branch is never deleted
+- [x] After cleanup, the client is switched to the last session (or tmux handles session selection naturally if no other session exists)
