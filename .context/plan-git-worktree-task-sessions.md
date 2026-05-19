@@ -88,13 +88,13 @@ Add a `list-tasks` subcommand that presents a unified list of all active task se
 
 ### Acceptance criteria
 
-- [ ] `C-a t` opens a task picker in a popup via television
-- [ ] Active task sessions appear as candidates
-- [ ] Orphaned worktrees (worktree on disk, no matching session) appear as candidates
-- [ ] Empty `.worktrees/` directories do not appear
-- [ ] Selecting an active session switches to it
-- [ ] Selecting an orphaned worktree creates a session at the existing worktree path and switches to it
-- [ ] Projects with no tasks and no worktrees produce no entries
+- [x] `C-a t` opens a task picker in a popup via television
+- [x] Active task sessions appear as candidates
+- [x] Orphaned worktrees (worktree on disk, no matching session) appear as candidates
+- [x] Empty `.worktrees/` directories do not appear
+- [x] Selecting an active session switches to it
+- [x] Selecting an orphaned worktree creates a session at the existing worktree path and switches to it
+- [x] Projects with no tasks and no worktrees produce no entries
 
 ---
 

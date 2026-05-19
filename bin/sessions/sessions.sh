@@ -232,6 +232,144 @@ get_branch_list() {
   } | sort -u
 }
 
+# --- Subcommand: list-tasks ---
+
+get_active_task_sessions() {
+  # Get task sessions (3+ /-separated segments)
+  local sessions
+  sessions=$(get_active_sessions)
+
+  if [[ -n "$sessions" ]]; then
+    while IFS= read -r session; do
+      local slash_count
+      slash_count=$(echo "$session" | tr -cd '/' | wc -c)
+      # Task sessions have 2+ slashes (parent/project/branch...)
+      if [[ "$slash_count" -ge 2 ]]; then
+        echo "$session"
+      fi
+    done <<< "$sessions"
+  fi
+}
+
+get_orphaned_worktrees() {
+  # Find worktrees that exist on disk but have no matching tmux session
+  local active_task_sessions
+  active_task_sessions=$(get_active_task_sessions)
+
+  for base_dir in "${PROJECT_DIRS[@]}"; do
+    if [[ ! -d "$base_dir" ]]; then
+      continue
+    fi
+    local parent
+    parent=$(basename "$base_dir")
+
+    for project_dir in "$base_dir"/*/; do
+      if [[ ! -d "$project_dir" ]]; then
+        continue
+      fi
+      local project_name
+      project_name=$(basename "$project_dir")
+      local worktrees_dir="$project_dir.worktrees"
+
+      if [[ ! -d "$worktrees_dir" ]]; then
+        continue
+      fi
+
+      # Find all worktrees (directories that are git worktrees)
+      # Worktrees can be nested (e.g. .worktrees/feat/PAC-123/)
+      while IFS= read -r worktree_path; do
+        # Skip if not a valid git worktree (check for .git file)
+        if [[ ! -e "$worktree_path/.git" ]]; then
+          continue
+        fi
+
+        # Extract branch name from worktree path
+        # worktree_path: /path/to/project/.worktrees/feat/PAC-123
+        # branch_name: feat/PAC-123
+        local branch_name
+        branch_name="${worktree_path#"$worktrees_dir/"}"
+
+        # Build the expected session name
+        local session_name="$parent/$project_name/$branch_name"
+
+        # Check if this session already exists
+        if echo "$active_task_sessions" | grep -qxF "$session_name"; then
+          continue
+        fi
+
+        # This is an orphaned worktree
+        echo "$session_name"
+      done < <(find "$worktrees_dir" -type d -name ".git" 2>/dev/null | while read -r git_file; do dirname "$git_file"; done)
+    done
+  done
+}
+
+build_task_candidates() {
+  # Combine active task sessions and orphaned worktrees
+  {
+    get_active_task_sessions
+    get_orphaned_worktrees
+  } | sort -u
+}
+
+resolve_task_worktree_path() {
+  # Map task session name to worktree filesystem path
+  # Input: parent/project/branch (e.g. "work/calton/feat/PAC-123")
+  # Output: full path (e.g. "/Users/mark/src/work/calton/.worktrees/feat/PAC-123")
+  local session_name="$1"
+
+  # Extract parent/project from the session name
+  local parent project branch_name
+  parent="${session_name%%/*}"
+  local rest="${session_name#*/}"
+  project="${rest%%/*}"
+  branch_name="${rest#*/}"
+
+  for base_dir in "${PROJECT_DIRS[@]}"; do
+    if [[ "$(basename "$base_dir")" == "$parent" ]]; then
+      echo "$base_dir/$project/.worktrees/$branch_name"
+      return
+    fi
+  done
+}
+
+cmd_list_tasks() {
+  # Build and present task candidates via television
+  local candidates
+  candidates=$(build_task_candidates)
+
+  if [[ -z "$candidates" ]]; then
+    gum style --foreground 208 "No active tasks or orphaned worktrees found."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 0
+  fi
+
+  local selection
+  selection=$(echo "$candidates" | tv --input-header "Tasks" --no-preview --no-remote)
+
+  # Exit if no selection
+  [[ -z "$selection" ]] && exit 0
+
+  # Check if session already exists
+  if tmux has-session -t "$selection" 2>/dev/null; then
+    # Switch to existing session
+    tmux switch-client -t "$selection"
+  else
+    # Orphaned worktree: create a new session at the existing worktree path
+    local worktree_path
+    worktree_path=$(resolve_task_worktree_path "$selection")
+
+    if [[ -d "$worktree_path" ]]; then
+      create_session "$selection" "$worktree_path"
+      tmux switch-client -t "$selection"
+    else
+      gum style --foreground 196 "Error: Worktree path not found: $worktree_path"
+      read -r -n 1 -p "Press any key to exit..."
+      exit 1
+    fi
+  fi
+}
+
 # --- Subcommand: list-projects ---
 
 build_project_candidates() {
@@ -313,8 +451,7 @@ main() {
       cmd_create_project
       ;;
     list-tasks)
-      echo "Error: list-tasks not yet implemented" >&2
-      exit 1
+      cmd_list_tasks
       ;;
     create-task)
       cmd_create_task
