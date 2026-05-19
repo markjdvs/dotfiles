@@ -2,13 +2,21 @@
 set -euo pipefail
 
 # Session manager for tmux using television as fuzzy finder
-# Presents a unified list of existing sessions and project directories
-# Selecting an entry switches to existing session or creates a new one
+# Subcommand-based dispatch for project and task session management
+#
+# Subcommands:
+#   list-projects  - List and switch between project sessions
+#   create-project - Create a new project (clone or init)
+#   list-tasks     - List and switch between task sessions
+#   create-task    - Create a new task (worktree + branch + session)
+#   finish-task    - Clean up current task (push, remove worktree, kill session)
 
 PROJECT_DIRS=(
   "$HOME/src/personal"
   "$HOME/src/work"
 )
+
+# --- Shared Functions ---
 
 get_active_sessions() {
   # Get list of active tmux sessions in format: parent/project
@@ -30,24 +38,10 @@ get_project_dirs() {
   done
 }
 
-build_candidates() {
-  local active_sessions
-  active_sessions=$(get_active_sessions)
-
-  # Output active sessions first
-  if [[ -n "$active_sessions" ]]; then
-    echo "$active_sessions"
-  fi
-
-  # Output project directories that don't have active sessions
-  while IFS= read -r project; do
-    if ! echo "$active_sessions" | grep -qxF "$project"; then
-      echo "$project"
-    fi
-  done < <(get_project_dirs)
-}
-
 resolve_project_path() {
+  # Map session name segments to filesystem path
+  # Input: parent/project (e.g. "work/calton")
+  # Output: full path (e.g. "/Users/mark/src/work/calton")
   local selection="$1"
   local parent="${selection%%/*}"
   local project="${selection#*/}"
@@ -61,10 +55,11 @@ resolve_project_path() {
 }
 
 create_session() {
+  # Create a tmux session with the standard two-window template
+  # Used identically for both project and task sessions
   local session_name="$1"
   local project_path="$2"
 
-  # Create session with Phase 2 template: two windows with standard layout
   # Use window indices instead of names — tmux misparses named targets
   # when session names contain /
 
@@ -83,9 +78,36 @@ create_session() {
   tmux select-pane -t "$session_name:0.0"
 }
 
-main() {
+# --- Subcommand: list-projects ---
+
+build_project_candidates() {
+  local active_sessions
+  active_sessions=$(get_active_sessions)
+
+  # Output active sessions first (only project sessions, not task sessions)
+  if [[ -n "$active_sessions" ]]; then
+    while IFS= read -r session; do
+      # Project sessions have exactly one / (parent/project)
+      # Task sessions have 2+ slashes (parent/project/branch...)
+      local slash_count
+      slash_count=$(echo "$session" | tr -cd '/' | wc -c)
+      if [[ "$slash_count" -eq 1 ]]; then
+        echo "$session"
+      fi
+    done <<< "$active_sessions"
+  fi
+
+  # Output project directories that don't have active sessions
+  while IFS= read -r project; do
+    if ! echo "$active_sessions" | grep -qxF "$project"; then
+      echo "$project"
+    fi
+  done < <(get_project_dirs)
+}
+
+cmd_list_projects() {
   # Build and present candidates via television
-  selection=$(build_candidates | sort -u | tv --input-header "Sessions" --no-preview --no-remote)
+  selection=$(build_project_candidates | sort -u | tv --input-header "Sessions" --no-preview --no-remote)
 
   # Exit if no selection
   [[ -z "$selection" ]] && exit 0
@@ -107,4 +129,52 @@ main() {
   fi
 }
 
-main
+# --- Usage ---
+
+usage() {
+  cat <<EOF
+Usage: sessions <subcommand>
+
+Subcommands:
+  list-projects   List and switch between project sessions (C-a p)
+  create-project  Create a new project by cloning or initializing (C-a P)
+  list-tasks      List and switch between task sessions (C-a t)
+  create-task     Create a new task with worktree and session (C-a T)
+  finish-task     Clean up current task: push, remove worktree, kill session (C-a X)
+
+EOF
+  exit 1
+}
+
+# --- Main Dispatch ---
+
+main() {
+  local subcommand="${1:-}"
+
+  case "$subcommand" in
+    list-projects)
+      cmd_list_projects
+      ;;
+    create-project)
+      echo "Error: create-project not yet implemented" >&2
+      exit 1
+      ;;
+    list-tasks)
+      echo "Error: list-tasks not yet implemented" >&2
+      exit 1
+      ;;
+    create-task)
+      echo "Error: create-task not yet implemented" >&2
+      exit 1
+      ;;
+    finish-task)
+      echo "Error: finish-task not yet implemented" >&2
+      exit 1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+}
+
+main "$@"
