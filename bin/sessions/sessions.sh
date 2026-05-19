@@ -78,6 +78,60 @@ create_session() {
   tmux select-pane -t "$session_name:0.0"
 }
 
+# --- Subcommand: create-project ---
+
+cmd_create_project() {
+  # Create a new project by cloning a remote repo or initializing locally
+  # Uses gum for all free-text input
+
+  # Step 1: Pick parent directory
+  local parent
+  parent=$(gum choose --header "Select parent directory" "personal" "work")
+  [[ -z "$parent" ]] && exit 0
+
+  # Map parent to base directory
+  local base_dir
+  case "$parent" in
+    personal) base_dir="$HOME/src/personal" ;;
+    work) base_dir="$HOME/src/work" ;;
+    *) echo "Error: Invalid parent directory" >&2; exit 1 ;;
+  esac
+
+  # Ensure base directory exists
+  mkdir -p "$base_dir"
+
+  # Step 2: Get project name
+  local project_name
+  project_name=$(gum input --header "Project name" --placeholder "my-project")
+  [[ -z "$project_name" ]] && exit 0
+
+  # Check if directory already exists
+  local project_path="$base_dir/$project_name"
+  if [[ -d "$project_path" ]]; then
+    gum style --foreground 196 "Error: Directory already exists: $project_path"
+    gum style "Use C-a p to open the existing project instead."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Step 3: Optionally get git URL
+  local git_url
+  git_url=$(gum input --header "Git URL (leave empty for local init)" --placeholder "https://github.com/org/repo.git")
+
+  # Step 4: Clone or init
+  if [[ -n "$git_url" ]]; then
+    gum spin --spinner dot --title "Cloning repository..." -- git clone "$git_url" "$project_path"
+  else
+    mkdir -p "$project_path"
+    git -C "$project_path" init
+  fi
+
+  # Step 5: Create session and switch to it
+  local session_name="$parent/$project_name"
+  create_session "$session_name" "$project_path"
+  tmux switch-client -t "$session_name"
+}
+
 # --- Subcommand: list-projects ---
 
 build_project_candidates() {
@@ -156,8 +210,7 @@ main() {
       cmd_list_projects
       ;;
     create-project)
-      echo "Error: create-project not yet implemented" >&2
-      exit 1
+      cmd_create_project
       ;;
     list-tasks)
       echo "Error: list-tasks not yet implemented" >&2
