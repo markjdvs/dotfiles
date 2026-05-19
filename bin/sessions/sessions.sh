@@ -132,6 +132,106 @@ cmd_create_project() {
   tmux switch-client -t "$session_name"
 }
 
+# --- Subcommand: create-task ---
+
+cmd_create_task() {
+  # Create a new task: worktree + branch + tmux session
+  # Two-step picker: project selection, then branch selection/creation
+
+  # Step 1: Pick a project via television
+  local project_selection
+  project_selection=$(get_project_dirs | tv --input-header "Select project" --no-preview --no-remote)
+  [[ -z "$project_selection" ]] && exit 0
+
+  local project_path
+  project_path=$(resolve_project_path "$project_selection")
+  if [[ ! -d "$project_path" ]]; then
+    echo "Error: Project path not found: $project_path" >&2
+    exit 1
+  fi
+
+  # Step 2: Fetch remote refs to ensure we have current state
+  gum spin --spinner dot --title "Fetching remote refs..." -- git -C "$project_path" fetch origin 2>/dev/null || true
+
+  # Step 3: Build branch list (deduplicated local + remote)
+  local branches
+  branches=$(get_branch_list "$project_path")
+
+  # Step 4: Pick existing branch or type new branch name
+  local branch_name
+  branch_name=$(echo "$branches" | tv --input-header "Select or type branch" --no-preview --no-remote)
+
+  # If no selection from tv, prompt for new branch name via gum
+  if [[ -z "$branch_name" ]]; then
+    branch_name=$(gum input --header "New branch name" --placeholder "feat/my-feature")
+    [[ -z "$branch_name" ]] && exit 0
+  fi
+
+  # Step 5: Determine branch state and create worktree
+  local worktree_path="$project_path/.worktrees/$branch_name"
+  local session_name="$project_selection/$branch_name"
+
+  # Check if branch is already checked out in main working tree
+  local current_branch
+  current_branch=$(git -C "$project_path" branch --show-current 2>/dev/null || true)
+  if [[ "$current_branch" == "$branch_name" ]]; then
+    gum style --foreground 196 "Error: Branch '$branch_name' is already checked out in the main working tree."
+    gum style "Switch to the project session or use a different branch."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Check if worktree already exists
+  if [[ -d "$worktree_path" ]]; then
+    gum style --foreground 196 "Error: Worktree already exists at: $worktree_path"
+    gum style "Use C-a t to switch to the existing task."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  # Create .worktrees directory if needed
+  mkdir -p "$(dirname "$worktree_path")"
+
+  # Determine how to create the worktree based on branch state
+  local branch_exists_local branch_exists_remote
+  branch_exists_local=$(git -C "$project_path" branch --list "$branch_name" | grep -c . || true)
+  branch_exists_remote=$(git -C "$project_path" branch -r --list "origin/$branch_name" | grep -c . || true)
+
+  if [[ "$branch_exists_local" -gt 0 ]]; then
+    # Existing local branch: attach worktree without -b
+    gum spin --spinner dot --title "Creating worktree from local branch..." -- \
+      git -C "$project_path" worktree add "$worktree_path" "$branch_name"
+  elif [[ "$branch_exists_remote" -gt 0 ]]; then
+    # Remote-only branch: create local tracking branch
+    gum spin --spinner dot --title "Creating worktree from remote branch..." -- \
+      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "origin/$branch_name"
+  else
+    # New branch: ensure main is up to date, create from main
+    gum spin --spinner dot --title "Updating main branch..." -- \
+      git -C "$project_path" fetch origin main:main 2>/dev/null || true
+    gum spin --spinner dot --title "Creating worktree with new branch..." -- \
+      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" main
+  fi
+
+  # Step 6: Create session and switch to it
+  create_session "$session_name" "$worktree_path"
+  tmux switch-client -t "$session_name"
+}
+
+get_branch_list() {
+  # Get deduplicated list of local and remote branches
+  local project_path="$1"
+
+  {
+    # Local branches (strip leading whitespace and asterisk)
+    git -C "$project_path" branch --list --format='%(refname:short)' 2>/dev/null
+
+    # Remote branches (strip origin/ prefix)
+    git -C "$project_path" branch -r --list --format='%(refname:short)' 2>/dev/null | \
+      grep '^origin/' | sed 's|^origin/||' | grep -v '^HEAD$'
+  } | sort -u
+}
+
 # --- Subcommand: list-projects ---
 
 build_project_candidates() {
@@ -217,8 +317,7 @@ main() {
       exit 1
       ;;
     create-task)
-      echo "Error: create-task not yet implemented" >&2
-      exit 1
+      cmd_create_task
       ;;
     finish-task)
       echo "Error: finish-task not yet implemented" >&2

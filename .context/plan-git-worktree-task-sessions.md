@@ -64,17 +64,17 @@ Add a `create-task` subcommand that creates a git worktree, branch, and tmux ses
 
 ### Acceptance criteria
 
-- [ ] `C-a T` opens a two-step picker in a popup
-- [ ] First step shows all project directories via television
-- [ ] Second step shows deduplicated local and remote branches via television
-- [ ] Typing a name that doesn't match an existing branch falls through to gum for new branch name input
-- [ ] New branches are created from an up-to-date `main`
-- [ ] Existing remote-only branches are checked out correctly as local tracking branches
-- [ ] Existing local branches are attached to worktrees without `-b`
-- [ ] Worktree is created at `<project-root>/.worktrees/<branch-name>/`
-- [ ] Task session is named `<parent>/<project>/<branch-name>`
-- [ ] Session uses the standard two-window template
-- [ ] If the branch is already checked out in the main working tree, the flow refuses with an error
+- [x] `C-a T` opens a two-step picker in a popup
+- [x] First step shows all project directories via television
+- [x] Second step shows deduplicated local and remote branches via television
+- [x] Typing a name that doesn't match an existing branch falls through to gum for new branch name input
+- [x] New branches are created from an up-to-date `main`
+- [x] Existing remote-only branches are checked out correctly as local tracking branches
+- [x] Existing local branches are attached to worktrees without `-b`
+- [x] Worktree is created at `<project-root>/.worktrees/<branch-name>/`
+- [x] Task session is named `<parent>/<project>/<branch-name>`
+- [x] Session uses the standard two-window template
+- [x] If the branch is already checked out in the main working tree, the flow refuses with an error
 
 ---
 
