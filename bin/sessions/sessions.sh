@@ -9,7 +9,7 @@ set -euo pipefail
 #   create-project - Create a new project (clone or init)
 #   list-tasks     - List and switch between task sessions
 #   create-task    - Create a new task (worktree + branch + session)
-#   finish-task    - Clean up current task (push, remove worktree, kill session)
+#   finish-task    - Clean up current task (optionally push, remove worktree, kill session)
 
 PROJECT_DIRS=(
   "$HOME/src/personal"
@@ -235,14 +235,9 @@ get_branch_list() {
 # --- Subcommand: finish-task ---
 
 cmd_finish_task() {
-  # Tear down the current task in a single action
-  # Pushes branch, removes worktree, deletes local branch, kills session
-
-  # Step 1: Capture current session name
   local session_name
   session_name=$(tmux display-message -p '#{session_name}')
 
-  # Validate this is a task session (3+ /-separated segments)
   local slash_count
   slash_count=$(echo "$session_name" | tr -cd '/' | wc -c)
   if [[ "$slash_count" -lt 2 ]]; then
@@ -252,14 +247,13 @@ cmd_finish_task() {
     exit 1
   fi
 
-  # Step 2: Parse project path and branch name from session name
+  # Parse project path and branch name from session name
   local parent project branch_name
   parent="${session_name%%/*}"
   local rest="${session_name#*/}"
   project="${rest%%/*}"
   branch_name="${rest#*/}"
 
-  # Resolve project base path
   local project_path=""
   for base_dir in "${PROJECT_DIRS[@]}"; do
     if [[ "$(basename "$base_dir")" == "$parent" ]]; then
@@ -282,7 +276,7 @@ cmd_finish_task() {
     exit 1
   fi
 
-  # Step 3: Check for uncommitted changes in the worktree
+  # Guard against uncommitted or untracked work
   if ! git -C "$worktree_path" diff --quiet 2>/dev/null || \
      ! git -C "$worktree_path" diff --cached --quiet 2>/dev/null; then
     gum style --foreground 196 "Error: Uncommitted changes detected in worktree."
@@ -291,7 +285,6 @@ cmd_finish_task() {
     exit 1
   fi
 
-  # Also check for untracked files that might be important
   local untracked_count
   untracked_count=$(git -C "$worktree_path" ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
   if [[ "$untracked_count" -gt 0 ]]; then
@@ -301,11 +294,18 @@ cmd_finish_task() {
     fi
   fi
 
-  # Step 4: Display task session name and prompt user to type it to confirm
+  local do_push=false
+  if gum confirm "Push branch '$branch_name' to remote before cleanup?"; then
+    do_push=true
+  fi
+
+  # Confirmation prompt
   gum style --bold --foreground 196 "⚠️  DESTRUCTIVE ACTION"
   gum style ""
   gum style "This will:"
-  gum style "  • Push branch '$branch_name' to remote"
+  if [[ "$do_push" == true ]]; then
+    gum style "  • Push branch '$branch_name' to remote"
+  fi
   gum style "  • Kill session '$session_name'"
   gum style "  • Remove worktree at: $worktree_path"
   gum style "  • Delete local branch '$branch_name'"
@@ -323,24 +323,19 @@ cmd_finish_task() {
     exit 0
   fi
 
-  # Step 5: Push branch to remote
-  gum style "Pushing branch to remote..."
-  if ! git -C "$worktree_path" push origin "$branch_name" 2>&1; then
-    gum style --foreground 208 "Warning: Failed to push branch. Continuing with cleanup..."
+  if [[ "$do_push" == true ]]; then
+    gum style "Pushing branch to remote..."
+    if ! git -C "$worktree_path" push origin "$branch_name" 2>&1; then
+      gum style --foreground 208 "Warning: Failed to push branch. Continuing with cleanup..."
+    fi
   fi
 
-  # Step 6: Switch to last session (before killing current session)
-  # This may fail if no other session exists - that's OK
   tmux switch-client -l 2>/dev/null || true
-
-  # Step 7: Kill the task session
   tmux kill-session -t "$session_name" 2>/dev/null || true
 
-  # Step 8: Remove the worktree
   gum style "Removing worktree..."
   git -C "$project_path" worktree remove "$worktree_path" --force 2>/dev/null || true
 
-  # Step 9: Delete the local branch (never delete remote)
   gum style "Deleting local branch..."
   git -C "$project_path" branch -D "$branch_name" 2>/dev/null || true
 
@@ -547,7 +542,7 @@ Subcommands:
   create-project  Create a new project by cloning or initializing (C-a P)
   list-tasks      List and switch between task sessions (C-a t)
   create-task     Create a new task with worktree and session (C-a T)
-  finish-task     Clean up current task: push, remove worktree, kill session (C-a X)
+  finish-task     Clean up current task: optionally push, remove worktree, kill session (C-a X)
 
 EOF
   exit 1
