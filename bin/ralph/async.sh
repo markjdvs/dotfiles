@@ -29,36 +29,71 @@ else
   main_repo=$(cd "$git_common_dir/.." && pwd)
 fi
 
-# --- Sandbox naming ---
+# --- Sandbox naming + stable workspace ---
 
 sandbox_name="async-${branch}"
+workspace_dir="$HOME/.ralph/workspaces/$sandbox_name"
 
-# --- Cleanup ---
+# --- Cleanup (tmpfiles only, not workspace) ---
 
 cleanup_files=()
 cleanup() {
-  for f in "${cleanup_files[@]}"; do
+  for f in "${cleanup_files[@]+"${cleanup_files[@]}"}"; do
     rm -rf "$f"
   done
 }
 trap cleanup EXIT
 
+# --- Inject credentials from macOS Keychain into sandbox ---
+
+inject_credentials() {
+  local sandbox=$1
+
+  local creds
+  if ! creds=$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null); then
+    echo "Error: No Claude credentials found in macOS Keychain." >&2
+    echo "Run 'claude' and log in first." >&2
+    exit 1
+  fi
+
+  echo "$creds" | docker sandbox exec -i "$sandbox" sh -c \
+    'mkdir -p /home/agent/.claude && cat > /home/agent/.claude/.credentials.json && chmod 600 /home/agent/.claude/.credentials.json'
+}
+
 # --- Check if sandbox already exists ---
 
-sandbox_exists=false
-if docker sandbox ls 2>/dev/null | grep -qF "$sandbox_name"; then
-  sandbox_exists=true
+sandbox_exists() {
+  docker sandbox ls 2>/dev/null | awk 'NR>1 {print $1}' | grep -qxF "$sandbox_name"
+}
+
+# --- Handle stale sandbox (workspace deleted from under it) ---
+
+if sandbox_exists && [ ! -d "$workspace_dir" ]; then
+  echo "Sandbox workspace missing, removing stale sandbox: $sandbox_name"
+  docker sandbox stop "$sandbox_name" 2>/dev/null || true
+  docker sandbox rm "$sandbox_name" 2>/dev/null || true
+fi
+
+# --- Ensure workspace exists ---
+
+if [ ! -d "$workspace_dir" ]; then
+  mkdir -p "$(dirname "$workspace_dir")"
+  git clone --local --branch "$branch" "$main_repo" "$workspace_dir"
+  echo "Created local clone at $workspace_dir on branch $branch"
+fi
+
+# --- Ensure sandbox exists ---
+
+if sandbox_exists; then
   echo "Reusing existing sandbox: $sandbox_name"
+else
+  docker sandbox create --name "$sandbox_name" claude "$workspace_dir" ~/.claude
+  echo "Created sandbox: $sandbox_name"
 fi
 
-# --- Create clone for new sandbox ---
+# --- Inject credentials (every run, to handle token refresh) ---
 
-if [ "$sandbox_exists" = false ]; then
-  clone_dir=$(mktemp -d)
-  cleanup_files+=("$clone_dir")
-  git clone --local --branch "$branch" "$main_repo" "$clone_dir"
-  echo "Created local clone at $clone_dir on branch $branch"
-fi
+inject_credentials "$sandbox_name"
 
 # --- jq filters ---
 
@@ -77,28 +112,14 @@ for ((i = 1; i <= iterations; i++)); do
   tmpfile=$(mktemp)
   cleanup_files+=("$tmpfile")
 
-  if [ "$sandbox_exists" = true ]; then
-    docker sandbox exec "$sandbox_name" -- \
-      claude \
-      --verbose \
-      --print \
-      --output-format stream-json \
-      "$prompt" |
-      grep --line-buffered '^{' |
-      tee "$tmpfile" |
-      jq --unbuffered -rj "$stream_text"
-  else
-    docker sandbox run --name "$sandbox_name" claude "$clone_dir" ~/.claude -- \
-      --verbose \
-      --print \
-      --output-format stream-json \
-      "$prompt" |
-      grep --line-buffered '^{' |
-      tee "$tmpfile" |
-      jq --unbuffered -rj "$stream_text"
-    # After first run, sandbox exists for subsequent iterations
-    sandbox_exists=true
-  fi
+  docker sandbox run "$sandbox_name" -- \
+    --verbose \
+    --print \
+    --output-format stream-json \
+    "$prompt" |
+    grep --line-buffered '^{' |
+    tee "$tmpfile" |
+    jq --unbuffered -rj "$stream_text"
 
   result=$(jq -r "$final_result" "$tmpfile")
 
