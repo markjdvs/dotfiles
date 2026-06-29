@@ -151,7 +151,9 @@ cmd_create_task() {
   fi
 
   # Step 2: Fetch remote refs to ensure we have current state
-  gum spin --spinner dot --title "Fetching remote refs..." -- git -C "$project_path" fetch origin 2>/dev/null || true
+  if ! git -C "$project_path" fetch origin; then
+    gum style --foreground 208 "Warning: Failed to fetch from origin. Continuing with local refs only."
+  fi
 
   # Step 3: Build branch list (deduplicated local + remote)
   local branches
