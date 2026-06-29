@@ -13,15 +13,11 @@ if [ -z "${1:-}" ]; then
   exit 1
 fi
 
-# --- Validate inputs ---
-
 iterations=$1
 if ! [[ "$iterations" =~ ^[1-9][0-9]*$ ]]; then
   echo "Error: iterations must be a positive integer" >&2
   exit 1
 fi
-
-# --- Resolve repo and branch ---
 
 branch=$(git rev-parse --abbrev-ref HEAD)
 
@@ -39,13 +35,10 @@ else
   main_repo=$(cd "$git_common_dir/.." && pwd)
 fi
 
-# --- Sandbox naming + stable workspace ---
-
 sandbox_name="async-${branch//\//-}"
 workspace_dir="$HOME/.ralph/workspaces/$sandbox_name"
 
-# --- Cleanup (tmpfiles only, not workspace) ---
-
+# Cleanup tmpfiles only — workspace is reused across runs
 cleanup_files=()
 cleanup() {
   for f in "${cleanup_files[@]+"${cleanup_files[@]}"}"; do
@@ -53,8 +46,6 @@ cleanup() {
   done
 }
 trap cleanup EXIT
-
-# --- Inject host config into sandbox ---
 
 inject_host_config() {
   local sandbox=$1
@@ -70,7 +61,7 @@ inject_host_config() {
     'umask 077 && mkdir -p /home/agent/.claude && cat > /home/agent/.claude/.credentials.json'
   unset creds
 
-  # SSH keys for git push — only private keys, not config/authorized_keys
+  # SSH private keys only — not config/authorized_keys
   docker sandbox exec "$sandbox" sh -c 'install -dm 700 /home/agent/.ssh'
   for key in id_ed25519 id_rsa id_ecdsa; do
     if [ -f "$HOME/.ssh/$key" ]; then
@@ -91,13 +82,11 @@ inject_host_config() {
     fi
   fi
 
-  # npm auth for private registries
   if [ -f "$HOME/.npmrc" ]; then
     docker sandbox exec -i "$sandbox" sh -c \
       'umask 077 && cat > /home/agent/.npmrc' < "$HOME/.npmrc"
   fi
 
-  # Git identity for commits
   local name email
   name=$(git config --global user.name 2>/dev/null || true)
   email=$(git config --global user.email 2>/dev/null || true)
@@ -109,27 +98,22 @@ inject_host_config() {
   fi
 }
 
-# --- Check if sandbox already exists ---
-
 sandbox_exists() {
   docker sandbox ls 2>/dev/null | awk 'NR>1 {print $1}' | grep -qxF "$sandbox_name"
 }
 
-# --- Handle stale sandbox (workspace deleted from under it) ---
-
+# Stale sandbox — workspace was deleted from under it
 if sandbox_exists && [ ! -d "$workspace_dir" ]; then
   echo "Sandbox workspace missing, removing stale sandbox: $sandbox_name"
   docker sandbox stop "$sandbox_name" 2>/dev/null || true
   docker sandbox rm "$sandbox_name" 2>/dev/null || true
 fi
 
-# --- Ensure workspace exists ---
-
 if [ ! -d "$workspace_dir" ]; then
   mkdir -p "$(dirname "$workspace_dir")"
   git clone --local --branch "$branch" "$main_repo" "$workspace_dir"
 
-  # Set remote to actual remote URL (--local clone points to the filesystem path)
+  # --local clone points remote to filesystem path; fix to actual remote URL
   remote_url=$(git -C "$main_repo" remote get-url origin 2>/dev/null || true)
   if [ -n "$remote_url" ]; then
     git -C "$workspace_dir" remote set-url origin "$remote_url"
@@ -138,8 +122,6 @@ if [ ! -d "$workspace_dir" ]; then
   echo "Created local clone at $workspace_dir on branch $branch"
 fi
 
-# --- Ensure sandbox exists ---
-
 if sandbox_exists; then
   echo "Reusing existing sandbox: $sandbox_name"
 else
@@ -147,20 +129,13 @@ else
   echo "Created sandbox: $sandbox_name"
 fi
 
-# --- Inject host config (every run, to handle token/key refresh) ---
-
+# Re-inject every run to pick up refreshed tokens/keys
 inject_host_config "$sandbox_name"
-
-# --- jq filters ---
 
 stream_text='select(.type == "assistant").message.content[]? | select(.type == "text").text // empty | gsub("\n"; "\r\n") | . + "\r\n\n"'
 final_result='select(.type == "result").result // empty'
 
-# --- Prompt ---
-
 prompt=$(cat "$SCRIPT_DIR/prompt.md")
-
-# --- Run iterations ---
 
 for ((i = 1; i <= iterations; i++)); do
   echo "--- Iteration $i of $iterations ---"

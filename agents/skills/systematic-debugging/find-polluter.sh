@@ -18,7 +18,6 @@ echo "🔍 Searching for test that creates: $POLLUTION_CHECK"
 echo "Test pattern: $TEST_PATTERN"
 echo ""
 
-# Get list of test files
 TEST_FILES=$(find . -path "$TEST_PATTERN" | sort)
 TOTAL=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
 
@@ -29,7 +28,6 @@ COUNT=0
 for TEST_FILE in $TEST_FILES; do
   COUNT=$((COUNT + 1))
 
-  # Skip if pollution already exists
   if [ -e "$POLLUTION_CHECK" ]; then
     echo "⚠️  Pollution already exists before test $COUNT/$TOTAL"
     echo "   Skipping: $TEST_FILE"
@@ -38,10 +36,8 @@ for TEST_FILE in $TEST_FILES; do
 
   echo "[$COUNT/$TOTAL] Testing: $TEST_FILE"
 
-  # Run the test
   npm test "$TEST_FILE" > /dev/null 2>&1 || true
 
-  # Check if pollution appeared
   if [ -e "$POLLUTION_CHECK" ]; then
     echo ""
     echo "🎯 FOUND POLLUTER!"
