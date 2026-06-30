@@ -11,6 +11,7 @@ get_active_sessions() {
 }
 
 get_project_dirs() {
+  local parent project project_name
   for base_dir in "${PROJECT_DIRS[@]}"; do
     if [[ -d "$base_dir" ]]; then
       parent=$(basename "$base_dir")
@@ -156,19 +157,16 @@ cmd_create_task() {
   branch_exists_remote=$(git -C "$project_path" branch -r --list "origin/$branch_name" | grep -c . || true)
 
   if [[ "$branch_exists_local" -gt 0 ]]; then
-    gum spin --spinner dot --title "Creating worktree from local branch..." -- \
-      git -C "$project_path" worktree add "$worktree_path" "$branch_name"
+    git -C "$project_path" worktree add "$worktree_path" "$branch_name"
   elif [[ "$branch_exists_remote" -gt 0 ]]; then
-    gum spin --spinner dot --title "Creating worktree from remote branch..." -- \
-      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "origin/$branch_name"
+    git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "origin/$branch_name"
   else
     local default_branch="main"
     if ! git -C "$project_path" fetch origin main:main 2>/dev/null; then
       git -C "$project_path" fetch origin master:master 2>/dev/null || true
       default_branch="master"
     fi
-    gum spin --spinner dot --title "Creating worktree with new branch..." -- \
-      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "$default_branch"
+    git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "$default_branch"
   fi
 
   create_session "$session_name" "$worktree_path"
@@ -429,6 +427,7 @@ build_project_candidates() {
 }
 
 cmd_list_projects() {
+  local selection project_path
   selection=$(build_project_candidates | sort -u | tv --input-header "Sessions" --no-preview --no-remote)
   [[ -z "$selection" ]] && exit 0
 
