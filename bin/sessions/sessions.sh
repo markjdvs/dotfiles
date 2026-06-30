@@ -88,7 +88,11 @@ cmd_create_project() {
   git_url=$(gum input --header "Git URL (leave empty for local init)" --placeholder "https://github.com/org/repo.git")
 
   if [[ -n "$git_url" ]]; then
-    gum spin --spinner dot --title "Cloning repository..." -- git clone "$git_url" "$project_path"
+    if ! git clone "$git_url" "$project_path"; then
+      gum style --foreground 196 "Error: Failed to clone repository."
+      read -r -n 1 -p "Press any key to exit..."
+      exit 1
+    fi
   else
     mkdir -p "$project_path"
     git -C "$project_path" init
@@ -158,10 +162,13 @@ cmd_create_task() {
     gum spin --spinner dot --title "Creating worktree from remote branch..." -- \
       git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "origin/$branch_name"
   else
-    gum spin --spinner dot --title "Updating main branch..." -- \
-      git -C "$project_path" fetch origin main:main 2>/dev/null || true
+    local default_branch="main"
+    if ! git -C "$project_path" fetch origin main:main 2>/dev/null; then
+      git -C "$project_path" fetch origin master:master 2>/dev/null || true
+      default_branch="master"
+    fi
     gum spin --spinner dot --title "Creating worktree with new branch..." -- \
-      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" main
+      git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "$default_branch"
   fi
 
   create_session "$session_name" "$worktree_path"
