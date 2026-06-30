@@ -161,11 +161,20 @@ cmd_create_task() {
   elif [[ "$branch_exists_remote" -gt 0 ]]; then
     git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "origin/$branch_name"
   else
-    local default_branch="main"
-    if ! git -C "$project_path" fetch origin main:main 2>/dev/null; then
-      git -C "$project_path" fetch origin master:master 2>/dev/null || true
-      default_branch="master"
+    local default_branch
+    default_branch=$(git -C "$project_path" branch --show-current 2>/dev/null || true)
+
+    if [[ "$default_branch" == "main" || "$default_branch" == "master" ]]; then
+      # Default branch is checked out — pull it forward in place
+      git -C "$project_path" pull --ff-only origin "$default_branch" 2>/dev/null || true
+    else
+      default_branch="main"
+      if ! git -C "$project_path" fetch origin main:main 2>/dev/null; then
+        git -C "$project_path" fetch origin master:master 2>/dev/null || true
+        default_branch="master"
+      fi
     fi
+
     git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "$default_branch"
   fi
 
