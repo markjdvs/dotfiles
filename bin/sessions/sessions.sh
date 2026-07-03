@@ -45,15 +45,21 @@ create_session() {
   # Window indices instead of names — tmux misparses named targets
   # when session names contain /
 
-  # Window 0: neovim (left) + claude (right)
   tmux new-session -d -s "$session_name" -c "$project_path" -n "editor"
   tmux send-keys -t "$session_name:0" "nvim ." Enter
-  tmux split-window -h -t "$session_name:0" -c "$project_path"
+  tmux split-window -h -l 33% -t "$session_name:0" -c "$project_path"
   tmux send-keys -t "$session_name:0.1" "claude" Enter
+  tmux select-pane -t "$session_name:0.0" -T "editor"
+  tmux select-pane -t "$session_name:0.1" -T "agent"
 
-  # Window 1: dev server (left) + logs (right)
   tmux new-window -t "$session_name" -n "dev" -c "$project_path"
   tmux split-window -h -t "$session_name:1" -c "$project_path"
+  tmux split-window -h -t "$session_name:1" -c "$project_path"
+  tmux select-layout -t "$session_name:1" even-horizontal
+  tmux select-pane -t "$session_name:1.0" -T "run"
+  tmux select-pane -t "$session_name:1.1" -T "test"
+  tmux select-pane -t "$session_name:1.2" -T "review"
+  tmux send-keys -t "$session_name:1.2" "hunk diff --watch" Enter
 
   tmux select-window -t "$session_name:0"
   tmux select-pane -t "$session_name:0.0"
