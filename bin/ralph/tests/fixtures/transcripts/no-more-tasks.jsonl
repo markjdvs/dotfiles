@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"def456","model":"claude-sonnet-4-6"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Every checkbox in the plan is ticked."}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"All phases are complete. <promise>NO MORE TASKS</promise>","session_id":"def456"}

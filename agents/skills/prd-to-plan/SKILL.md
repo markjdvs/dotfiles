@@ -1,11 +1,11 @@
 ---
 name: prd-to-plan
-description: Turn a PRD into a multi-phase implementation plan using tracer-bullet vertical slices, saved as a local Markdown file in ./plans/. Use when user wants to break down a PRD, create an implementation plan, plan phases from a PRD, or mentions "tracer bullets".
+description: Turn a PRD into a multi-phase implementation plan using tracer-bullet vertical slices, saved as a local Markdown file in .context/. Use when user wants to break down a PRD, create an implementation plan, plan phases from a PRD, or mentions "tracer bullets".
 ---
 
 # PRD to Plan
 
-Break a PRD into a phased implementation plan using vertical slices (tracer bullets). Output is a Markdown file in `./plans/`.
+Break a PRD into a phased implementation plan using vertical slices (tracer bullets). Output is a Markdown file in `.context/`.
 
 ## Process
 
@@ -57,52 +57,15 @@ Iterate until the user approves the breakdown.
 
 ### 6. Write the plan file
 
-Create `./plans/` if it doesn't exist. Write the plan as a Markdown file named after the feature (e.g. `./plans/user-onboarding.md`). Use the template below.
+Write the plan as a Markdown file named after the feature, prefixed with `plan-` (e.g. `.context/plan-user-onboarding.md`). Use the [plan template](assets/plan-template.md).
 
-<plan-template>
-# Plan: <Feature Name>
+Every phase must carry:
 
-> Source PRD: <brief identifier or link>
-
-## Architectural decisions
-
-Durable decisions that apply across all phases:
-
-- **Routes**: ...
-- **Schema**: ...
-- **Key models**: ...
-- (add/remove sections as appropriate)
-
----
-
-## Phase 1: <Title>
-
-**User stories**: <list from PRD>
-
-### What to build
-
-A concise description of this vertical slice. Describe the end-to-end behavior, not layer-by-layer implementation.
-
-### Acceptance criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
-
----
-
-## Phase 2: <Title>
-
-**User stories**: <list from PRD>
-
-### What to build
-
-...
-
-### Acceptance criteria
-
-- [ ] ...
-
-<!-- Repeat for each phase -->
-</plan-template>
-
+- **Acceptance criteria as observable behaviours** — each checkbox describes
+  something watchable from outside the code ("Running X produces Y", "Given
+  state C, doing D results in E"), never implementation facts ("X is
+  implemented"). The plan is an executable spec: a criterion is verified by
+  observing it, then its checkbox is ticked.
+- **A Verification section** — the exact commands to run and what to observe
+  to prove the phase end-to-end, including the executable acceptance test
+  that should now exist and pass.
