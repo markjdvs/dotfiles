@@ -7,9 +7,12 @@
 RALPH_STREAM_TEXT_FILTER='select(.type == "assistant").message.content[]? | select(.type == "text").text // empty | gsub("\n"; "\r\n") | . + "\r\n\n"'
 
 RALPH_NO_MORE_TASKS_PROMISE='<promise>NO MORE TASKS</promise>'
+# A blocked iteration commits what is safe and reports this, carrying an
+# optional reason: <promise>BLOCKED: reason</promise>.
+RALPH_BLOCKED_PROMISE='<promise>BLOCKED'
 
 # classify_outcome TRANSCRIPT_FILE [RUN_EXIT_CODE]
-# Prints one of: worked | no-more-tasks | failed
+# Prints one of: worked | no-more-tasks | blocked | failed
 classify_outcome() {
   local transcript=$1 run_rc=${2:-0}
 
@@ -36,6 +39,8 @@ classify_outcome() {
 
   if [[ "$result" == *"$RALPH_NO_MORE_TASKS_PROMISE"* ]]; then
     echo "no-more-tasks"
+  elif [[ "$result" == *"$RALPH_BLOCKED_PROMISE"* ]]; then
+    echo "blocked"
   else
     echo "worked"
   fi
@@ -47,6 +52,7 @@ outcome_exit_code() {
   case "$1" in
     worked) echo 0 ;;
     no-more-tasks) echo 10 ;;
+    blocked) echo 1 ;;
     *) echo 1 ;;
   esac
 }

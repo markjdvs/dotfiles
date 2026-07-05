@@ -18,6 +18,12 @@ setup() {
   [ "$output" = "no-more-tasks" ]
 }
 
+@test "the BLOCKED promise classifies as blocked" {
+  run classify_outcome "$FIXTURES/blocked.jsonl" 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "blocked" ]
+}
+
 @test "an error result classifies as failed" {
   run classify_outcome "$FIXTURES/error.jsonl" 0
   [ "$output" = "failed" ]
@@ -40,8 +46,9 @@ setup() {
   [[ "$output" == *"Phase 1 implemented"* ]]
 }
 
-@test "outcome exit codes distinguish worked, no-more-tasks, and failed" {
+@test "outcome exit codes distinguish worked, no-more-tasks, blocked, and failed" {
   [ "$(outcome_exit_code worked)" -eq 0 ]
   [ "$(outcome_exit_code no-more-tasks)" -eq 10 ]
+  [ "$(outcome_exit_code blocked)" -eq 1 ]
   [ "$(outcome_exit_code failed)" -eq 1 ]
 }

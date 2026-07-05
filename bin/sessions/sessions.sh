@@ -47,7 +47,7 @@ create_session() {
 
   tmux new-session -d -s "$session_name" -c "$project_path" -n "editor"
   tmux send-keys -t "$session_name:0" "nvim ." Enter
-  tmux split-window -h -l 33% -t "$session_name:0" -c "$project_path"
+  tmux split-window -h -l 25% -t "$session_name:0" -c "$project_path"
   tmux send-keys -t "$session_name:0.1" "claude" Enter
   tmux select-pane -t "$session_name:0.0" -T "editor"
   tmux select-pane -t "$session_name:0.1" -T "agent"
@@ -72,9 +72,12 @@ cmd_create_project() {
 
   local base_dir
   case "$parent" in
-    personal) base_dir="$HOME/src/personal" ;;
-    work) base_dir="$HOME/src/work" ;;
-    *) echo "Error: Invalid parent directory" >&2; exit 1 ;;
+  personal) base_dir="$HOME/src/personal" ;;
+  work) base_dir="$HOME/src/work" ;;
+  *)
+    echo "Error: Invalid parent directory" >&2
+    exit 1
+    ;;
   esac
 
   mkdir -p "$base_dir"
@@ -194,7 +197,7 @@ get_branch_list() {
   {
     git -C "$project_path" branch --list --format='%(refname:short)' 2>/dev/null
 
-    git -C "$project_path" branch -r --list --format='%(refname:short)' 2>/dev/null | \
+    git -C "$project_path" branch -r --list --format='%(refname:short)' 2>/dev/null |
       grep '^origin/' | sed 's|^origin/||' | grep -v '^HEAD$'
   } | sort -u
 }
@@ -240,8 +243,8 @@ cmd_finish_task() {
     exit 1
   fi
 
-  if ! git -C "$worktree_path" diff --quiet 2>/dev/null || \
-     ! git -C "$worktree_path" diff --cached --quiet 2>/dev/null; then
+  if ! git -C "$worktree_path" diff --quiet 2>/dev/null ||
+    ! git -C "$worktree_path" diff --cached --quiet 2>/dev/null; then
     gum style --foreground 196 "Error: Uncommitted changes detected in worktree."
     gum style "Commit or stash your changes before finishing the task."
     read -r -n 1 -p "Press any key to exit..."
@@ -316,7 +319,7 @@ get_active_task_sessions() {
       if [[ "$slash_count" -ge 2 ]]; then
         echo "$session"
       fi
-    done <<< "$sessions"
+    done <<<"$sessions"
   fi
 }
 
@@ -431,7 +434,7 @@ build_project_candidates() {
       if [[ "$slash_count" -eq 1 ]]; then
         echo "$session"
       fi
-    done <<< "$active_sessions"
+    done <<<"$active_sessions"
   fi
 
   while IFS= read -r project; do
@@ -479,24 +482,24 @@ main() {
   local subcommand="${1:-}"
 
   case "$subcommand" in
-    list-projects)
-      cmd_list_projects
-      ;;
-    create-project)
-      cmd_create_project
-      ;;
-    list-tasks)
-      cmd_list_tasks
-      ;;
-    create-task)
-      cmd_create_task
-      ;;
-    finish-task)
-      cmd_finish_task
-      ;;
-    *)
-      usage
-      ;;
+  list-projects)
+    cmd_list_projects
+    ;;
+  create-project)
+    cmd_create_project
+    ;;
+  list-tasks)
+    cmd_list_tasks
+    ;;
+  create-task)
+    cmd_create_task
+    ;;
+  finish-task)
+    cmd_finish_task
+    ;;
+  *)
+    usage
+    ;;
   esac
 }
 

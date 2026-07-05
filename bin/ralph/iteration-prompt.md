@@ -8,11 +8,9 @@ progress record. Complete EXACTLY ONE plan phase, then stop.
 
 # 1. SYNC
 
-Bring the workspace up to date before doing anything:
-
-```
-git pull --ff-only
-```
+The host has already synced this workspace to origin. Do NOT run `git pull`,
+`git fetch`, or `git push` — this sandbox has no network access to the remote.
+Work against the checkout as it stands.
 
 # 2. BOOTSTRAP
 
@@ -61,23 +59,22 @@ unit tests:
 Tick the acceptance-criteria checkboxes (`- [ ]` → `- [x]`) of the completed
 phase in {{PLAN_PATH}}. Tick only criteria you actually verified.
 
-# 7. COMMIT AND PUSH
+# 7. COMMIT
 
 Commit everything (implementation, acceptance test, ticked plan). The commit
 message must include: what was done, key decisions made, and any blockers or
 notes for the next iteration.
 
-Then push:
-
-- If unticked checkboxes remain in the plan: `git push -o ci.skip`
-- If you just completed the FINAL phase (no unticked checkboxes remain):
-  `git push` — the finished branch must be CI-validated.
+Do NOT push — the host pushes your commit to origin after this iteration
+returns. Your job ends at a clean commit.
 
 # RULES
 
 - ONE phase per iteration, never more.
 - Never invoke authoring skills (grilling, PRD, or plan writing) — you
   consume artefacts, you don't produce them.
-- Never leave work uncommitted or unpushed at the end of the iteration.
-- If you are blocked, commit what is safe, describe the blocker in the
-  commit message, and stop.
+- Never leave work uncommitted at the end of the iteration.
+- If you are blocked (e.g. the environment cannot be made runnable), commit
+  what is safe, describe the blocker in the commit message, then output
+  `<promise>BLOCKED: one-line reason</promise>` and stop. This halts the loop
+  instead of silently burning the iteration budget.

@@ -92,7 +92,8 @@ copy_resolved skills
 copy_resolved agents
 copy_resolved commands
 
-jq --arg tok "$token" '.env.CLAUDE_CODE_OAUTH_TOKEN = $tok' \
+jq --arg tok "$token" \
+  '.env.CLAUDE_CODE_OAUTH_TOKEN = $tok | .env.NODE_USE_ENV_PROXY = "1"' \
   "$SCRIPT_DIR/sandbox-settings.json" >"$staging/settings.json"
 
 echo "Copying resolved config into sandbox"
@@ -105,23 +106,46 @@ tar -C "$staging" -cf - . | docker sandbox exec -i "$sandbox_name" sh -c "
   tar -xf - -C $RALPH_SANDBOX_HOME/.claude
 "
 
-# --- Git plumbing the agent needs to push to origin ---
+# --- Toolchain: install the repo's pinned Node so every iteration starts
+# runnable. The base image ships an older Node; the workspace often needs a
+# newer one, and Node's fetch/undici (corepack, pnpm) ignore the sandbox proxy
+# unless NODE_USE_ENV_PROXY=1 — which the injected settings.json sets. ---
 
-docker sandbox exec "$sandbox_name" sh -c "install -dm 700 $RALPH_SANDBOX_HOME/.ssh"
-for key in id_ed25519 id_rsa id_ecdsa; do
-  if [ -f "$HOME/.ssh/$key" ]; then
-    docker sandbox exec -i "$sandbox_name" sh -c \
-      "umask 077 && cat > $RALPH_SANDBOX_HOME/.ssh/$key" <"$HOME/.ssh/$key"
+node_version=""
+for f in .nvmrc .node-version; do
+  if [ -f "$workspace_dir/$f" ]; then
+    node_version=$(tr -cd '0-9.' <"$workspace_dir/$f")
+    break
   fi
 done
 
-if [[ "$origin_url" == *@* ]]; then
-  remote_host=$(echo "$origin_url" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-  if [ -n "$remote_host" ]; then
-    ssh-keyscan "$remote_host" 2>/dev/null | docker sandbox exec -i "$sandbox_name" sh -c \
-      "cat > $RALPH_SANDBOX_HOME/.ssh/known_hosts"
-  fi
+if [ -n "$node_version" ]; then
+  echo "Ensuring Node $node_version in sandbox"
+  docker sandbox exec -i "$sandbox_name" sh -s "$node_version" <<'SETUP'
+set -e
+V=$1
+if command -v node >/dev/null 2>&1 && [ "$(node --version)" = "v$V" ]; then
+  echo "Node v$V already present"
+  exit 0
 fi
+case "$(uname -m)" in
+  aarch64 | arm64) arch=arm64 ;;
+  x86_64) arch=x64 ;;
+  *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+esac
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL -o "$tmp/node.tar.gz" "https://nodejs.org/dist/v$V/node-v$V-linux-$arch.tar.gz"
+mkdir -p "$HOME/.local"
+tar -xzf "$tmp/node.tar.gz" --strip-components=1 -C "$HOME/.local"
+hash -r 2>/dev/null || true
+echo "Installed $(node --version) to $HOME/.local"
+SETUP
+fi
+
+# --- Registry auth: pnpm needs .npmrc to reach private GitLab packages.
+# Git push is host-side (the agent never touches the remote), so no SSH key
+# or write token goes into the sandbox. ---
 
 if [ -f "$HOME/.npmrc" ]; then
   docker sandbox exec -i "$sandbox_name" sh -c \
@@ -157,7 +181,11 @@ if [ "$check_mode" = true ]; then
   echo "Skills present and fully resolved."
 
   echo "Checking claude auth inside the sandbox..."
-  if ! docker sandbox run "$sandbox_name" -- --print "Reply with exactly: RALPH-OK" | grep -q "RALPH-OK"; then
+  if ! docker sandbox exec "$sandbox_name" sh -c '
+    cd "$1" || exit 1
+    export CLAUDE_CODE_OAUTH_TOKEN="$2"
+    exec claude --print "Reply with exactly: RALPH-OK"
+  ' _ "$workspace_dir" "$token" | grep -q "RALPH-OK"; then
     echo "Check failed: claude --print did not succeed inside the sandbox" >&2
     exit 1
   fi

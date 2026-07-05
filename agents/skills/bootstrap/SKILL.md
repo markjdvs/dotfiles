@@ -52,6 +52,17 @@ in `package.json` (use corepack) over any global default.
 `.tool-versions`, `mise.toml`, `.python-version`) demands a runtime that is
 missing, install it through the version manager the file belongs to; if that
 is impossible, report the gap instead of silently using the wrong version.
+For Node, when no version manager can reach the network, download the official
+tarball with `curl` (which honours proxies — see below) from
+`https://nodejs.org/dist/v<VERSION>/node-v<VERSION>-linux-<arch>.tar.gz` and
+unpack it onto `PATH` (`~/.local` works without sudo).
+
+**Behind a proxy** — if `HTTPS_PROXY`/`https_proxy` is set (a sandboxed agent
+usually runs behind a MITM proxy), export `NODE_USE_ENV_PROXY=1` before running
+any Node package manager. Node's built-in `fetch`/undici — used by corepack and
+pnpm — ignores the proxy env vars otherwise and fails with `ECONNREFUSED` even
+though `curl` and `git` reach the network fine. `curl`, `git`, and `pip` honour
+`*_proxy` without extra flags.
 
 **Env stubs** — if `.env.example` (or `.env.template`) exists and `.env`
 does not, copy it. NEVER overwrite an existing `.env`.

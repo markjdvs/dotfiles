@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"blk789","model":"claude-sonnet-4-6"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"The workspace cannot be made runnable — committing the blocker note."}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Bootstrap failed: Node 24 unavailable. <promise>BLOCKED: cannot install required Node runtime</promise>","session_id":"blk789"}
