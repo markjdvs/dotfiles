@@ -102,6 +102,8 @@ if [ -z "$token" ]; then
   exit 1
 fi
 
+head_before=$(git -C "$workspace_dir" rev-parse HEAD 2>/dev/null || true)
+
 set +e
 docker sandbox exec "$sandbox_name" sh -c '
   cd "$1" || exit 1
@@ -115,25 +117,41 @@ run_rc=${PIPESTATUS[0]}
 set -e
 
 outcome=$(classify_outcome "$transcript" "$run_rc")
+
+head_after=$(git -C "$workspace_dir" rev-parse HEAD 2>/dev/null || true)
+committed=false
+if [ -n "$head_before" ] && [ -n "$head_after" ] && [ "$head_after" != "$head_before" ]; then
+  committed=true
+fi
+
+# No-progress backstop: a "worked" iteration must leave a commit. If HEAD did
+# not move, the agent spun without committing (typically stalled on an
+# unanswerable interactive prompt) — treat it as blocked so the loop halts and
+# surfaces it, rather than silently burning the budget one empty turn at a time.
+if [ "$outcome" = "worked" ] && [ "$committed" = false ]; then
+  echo "No commit produced this iteration — the agent made no progress." >&2
+  outcome=blocked
+fi
+
 echo ""
 echo "Iteration outcome: $outcome"
 
-# Host-side push: the agent commits but never touches the remote. Push a clean
-# iteration's commit for the human (and the next iteration) to see. A completed
-# final phase gets a full CI push; anything still in progress skips CI.
-case "$outcome" in
-  worked | blocked)
-    if [ "$outcome" = "worked" ] && [ "$(task_unticked_phases "$workspace_dir/$plan")" = "0" ]; then
-      echo "Final phase complete — pushing with CI."
-      push_mode=--run-ci
-    else
-      push_mode=--ci-skip
-    fi
-    if ! ralph_push "$workspace_dir" "$branch" "$push_mode"; then
-      echo "Error: iteration $outcome but host push failed — commit is safe in $workspace_dir" >&2
-      exit 1
-    fi
-    ;;
-esac
+# Host-side push: the agent commits but never touches the remote. Push whenever
+# the iteration produced a commit — keyed on HEAD moving, not the outcome word,
+# because the agent may finish the FINAL phase and declare NO MORE TASKS in the
+# same turn. A fully-ticked plan gets a CI-validated push; work still in
+# progress (or a blocker's safe commit) skips CI.
+if [ "$committed" = true ] && [ "$outcome" != "failed" ]; then
+  if [ "$(task_unticked_phases "$workspace_dir/$plan")" = "0" ]; then
+    echo "Plan complete — pushing with CI."
+    push_mode=--run-ci
+  else
+    push_mode=--ci-skip
+  fi
+  if ! ralph_push "$workspace_dir" "$branch" "$push_mode"; then
+    echo "Error: iteration committed work but host push failed — commit is safe in $workspace_dir" >&2
+    exit 1
+  fi
+fi
 
 exit "$(outcome_exit_code "$outcome")"

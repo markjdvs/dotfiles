@@ -6,6 +6,14 @@ You are one stateless iteration of the ralph loop. Your task specification is:
 All continuity lives in the repository — the plan's checkboxes are the single
 progress record. Complete EXACTLY ONE plan phase, then stop.
 
+You run FULLY HEADLESS — there is no human to answer questions. NEVER ask for
+confirmation, approval, or clarification: you will receive no reply and the
+iteration will end having achieved nothing. When a skill or step says to
+"confirm with the user", "get approval", or "ask your partner", make the call
+yourself using the PRD and plan as the source of truth, and proceed. The only
+acceptable reasons to stop early are finishing the phase, no work remaining
+(NO MORE TASKS), or a genuine blocker (BLOCKED) — never an unanswered question.
+
 # 1. SYNC
 
 The host has already synced this workspace to origin. Do NOT run `git pull`,
