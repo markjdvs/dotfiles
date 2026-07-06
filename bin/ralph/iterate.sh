@@ -136,22 +136,23 @@ fi
 echo ""
 echo "Iteration outcome: $outcome"
 
-# Host-side push: the agent commits but never touches the remote. Push whenever
-# the iteration produced a commit — keyed on HEAD moving, not the outcome word,
-# because the agent may finish the FINAL phase and declare NO MORE TASKS in the
-# same turn. A fully-ticked plan gets a CI-validated push; work still in
-# progress (or a blocker's safe commit) skips CI.
-if [ "$committed" = true ] && [ "$outcome" != "failed" ]; then
-  if [ "$(task_unticked_phases "$workspace_dir/$plan")" = "0" ]; then
+# The agent commits but never pushes; the host ships the commit. push_decision
+# (lib/outcome.sh) chooses whether and how, keyed on the commit not the outcome.
+unticked=$(task_unticked_phases "$workspace_dir/$plan" 2>/dev/null || echo 1)
+case "$(push_decision "$committed" "$outcome" "$unticked")" in
+  run-ci)
     echo "Plan complete — pushing with CI."
-    push_mode=--run-ci
-  else
-    push_mode=--ci-skip
-  fi
-  if ! ralph_push "$workspace_dir" "$branch" "$push_mode"; then
-    echo "Error: iteration committed work but host push failed — commit is safe in $workspace_dir" >&2
-    exit 1
-  fi
-fi
+    ralph_push "$workspace_dir" "$branch" --run-ci || {
+      echo "Error: committed work but host push failed — commit is safe in $workspace_dir" >&2
+      exit 1
+    }
+    ;;
+  ci-skip)
+    ralph_push "$workspace_dir" "$branch" --ci-skip || {
+      echo "Error: committed work but host push failed — commit is safe in $workspace_dir" >&2
+      exit 1
+    }
+    ;;
+esac
 
 exit "$(outcome_exit_code "$outcome")"

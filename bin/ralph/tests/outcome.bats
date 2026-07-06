@@ -46,6 +46,31 @@ setup() {
   [[ "$output" == *"Phase 1 implemented"* ]]
 }
 
+@test "push_decision ships a final phase declared complete in the same turn" {
+  # The regression: agent implemented the last phase, committed, AND emitted
+  # NO MORE TASKS in one turn. A commit exists and the plan is fully ticked —
+  # it must push with CI, never be stranded on 'no-more-tasks'.
+  [ "$(push_decision true no-more-tasks 0)" = "run-ci" ]
+}
+
+@test "push_decision skips CI while phases remain" {
+  [ "$(push_decision true worked 2)" = "ci-skip" ]
+  [ "$(push_decision true blocked 3)" = "ci-skip" ]
+}
+
+@test "push_decision pushes with CI when a worked iteration ticks the last box" {
+  [ "$(push_decision true worked 0)" = "run-ci" ]
+}
+
+@test "push_decision does nothing without a commit" {
+  [ "$(push_decision false worked 2)" = "none" ]
+  [ "$(push_decision false no-more-tasks 0)" = "none" ]
+}
+
+@test "push_decision never auto-pushes a failed run" {
+  [ "$(push_decision true failed 1)" = "none" ]
+}
+
 @test "outcome exit codes distinguish worked, no-more-tasks, blocked, and failed" {
   [ "$(outcome_exit_code worked)" -eq 0 ]
   [ "$(outcome_exit_code no-more-tasks)" -eq 10 ]

@@ -65,8 +65,8 @@ else
   echo "Created sandbox: $sandbox_name"
 fi
 
-# --- Config: resolved copy of host skills/agents/commands + curated settings ---
-
+# Copy the host's skills/agents/commands with symlinks resolved — the sandbox
+# is a separate filesystem and can't follow links back to the host.
 staging=$(mktemp -d)
 cleanup() { rm -rf "$staging"; }
 trap cleanup EXIT
@@ -106,10 +106,10 @@ tar -C "$staging" -cf - . | docker sandbox exec -i "$sandbox_name" sh -c "
   tar -xf - -C $RALPH_SANDBOX_HOME/.claude
 "
 
-# --- Toolchain: install the repo's pinned Node so every iteration starts
-# runnable. The base image ships an older Node; the workspace often needs a
-# newer one, and Node's fetch/undici (corepack, pnpm) ignore the sandbox proxy
-# unless NODE_USE_ENV_PROXY=1 — which the injected settings.json sets. ---
+# Install the repo's pinned Node so every iteration starts runnable. The base
+# image ships an older Node; the workspace often needs a newer one, and Node's
+# fetch/undici (corepack, pnpm) ignore the sandbox proxy unless
+# NODE_USE_ENV_PROXY=1 — which the injected settings.json sets.
 
 node_version=""
 for f in .nvmrc .node-version; do
@@ -143,9 +143,9 @@ echo "Installed $(node --version) to $HOME/.local"
 SETUP
 fi
 
-# --- Registry auth: pnpm needs .npmrc to reach private GitLab packages.
-# Git push is host-side (the agent never touches the remote), so no SSH key
-# or write token goes into the sandbox. ---
+# pnpm needs .npmrc to reach private GitLab packages. Git push is host-side
+# (the agent never touches the remote), so no SSH key or write token goes into
+# the sandbox.
 
 if [ -f "$HOME/.npmrc" ]; then
   docker sandbox exec -i "$sandbox_name" sh -c \
@@ -158,8 +158,6 @@ git_email=$(git config --global user.email 2>/dev/null || true)
 [ -n "$git_email" ] && docker sandbox exec "$sandbox_name" git config --global user.email "$git_email"
 
 echo "Provisioned sandbox '$sandbox_name' for branch '$branch'"
-
-# --- Check mode: prove the result from inside the sandbox ---
 
 if [ "$check_mode" = true ]; then
   echo "Checking skills inside the sandbox..."

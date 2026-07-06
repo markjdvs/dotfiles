@@ -46,6 +46,25 @@ classify_outcome() {
   fi
 }
 
+# push_decision COMMITTED OUTCOME UNTICKED_COUNT
+# Decide the host push action for a finished iteration. Keyed on whether the
+# iteration produced a commit (COMMITTED="true", i.e. HEAD moved) — NOT on the
+# outcome word — because the agent may finish the FINAL phase and declare
+# NO MORE TASKS in the same turn, and that commit MUST still ship to origin.
+# A fully-ticked plan (UNTICKED_COUNT=0) earns a CI-validated push; work still
+# in progress skips CI. A failed run never auto-pushes its (possibly dirty) state.
+# Prints one of: none | ci-skip | run-ci
+push_decision() {
+  local committed=$1 outcome=$2 unticked=$3
+  if [ "$committed" != "true" ] || [ "$outcome" = "failed" ]; then
+    echo "none"
+  elif [ "$unticked" = "0" ]; then
+    echo "run-ci"
+  else
+    echo "ci-skip"
+  fi
+}
+
 # Map an outcome word to the ralph exit-status contract:
 # 0 = worked, 10 = no-more-tasks, 1 = failed.
 outcome_exit_code() {

@@ -29,8 +29,6 @@ done
 
 require_docker
 
-# --- Validations: refuse before touching anything ---
-
 branch=$(task_branch)
 sandbox_name=$(task_sandbox_name)
 workspace_dir=$(task_workspace_dir)
@@ -85,16 +83,14 @@ plan=$(cut -f2 <<<"$selected")
 
 ralph_ensure_token
 
-# --- Budget: unticked phases + 5 unless overridden ---
-
+# Budget headroom: phases rarely map one-to-one to iterations (bootstrap
+# failures, retries, verification), so allow slack beyond the phase count.
 if [ -n "$iterations_override" ]; then
   budget=$iterations_override
 else
   unticked=$(task_unticked_phases "$checkout_dir/$plan")
   budget=$((unticked + 5))
 fi
-
-# --- Hand off: push, provision, loop ---
 
 echo "Handing off '$branch' ($prd + $plan, budget: $budget iterations)"
 ralph_push "$checkout_dir" "$branch" --ci-skip
