@@ -45,7 +45,14 @@ create_session() {
   # Window indices instead of names — tmux misparses named targets
   # when session names contain /
 
-  tmux new-session -d -s "$session_name" -c "$project_path" -n "editor"
+  local size_args=() client_width client_height
+  client_width=$(tmux display-message -p '#{client_width}' 2>/dev/null || true)
+  client_height=$(tmux display-message -p '#{client_height}' 2>/dev/null || true)
+  if [[ -n "$client_width" && -n "$client_height" ]]; then
+    size_args=(-x "$client_width" -y "$client_height")
+  fi
+
+  tmux new-session -d -s "$session_name" -c "$project_path" -n "editor" "${size_args[@]}"
   tmux send-keys -t "$session_name:0" "nvim ." Enter
   tmux split-window -h -l 25% -t "$session_name:0" -c "$project_path"
   tmux send-keys -t "$session_name:0.1" "claude" Enter
