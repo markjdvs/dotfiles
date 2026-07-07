@@ -43,6 +43,10 @@ Structure a skill for this: the description carries invocation, the body carries
 
 Link other files by relative path from the skill root (`references/GLOSSARY.md`), and keep pointers **one level deep** from `SKILL.md` — a disclosed file that points onward to further disclosed files makes the chain unreliable.
 
+## Placement
+
+Global skills live in the dotfiles repo at `~/src/personal/dotfiles/agents/skills/<skill-name>/`, symlinked into `~/.claude/skills/` by `agents/install.sh`. Never create a skill directly in `~/.claude/skills/` — it would exist only on this machine and outside version control. A pattern that only applies to one project belongs in that project's instructions file, not a skill.
+
 ## Validation
 
 ```bash

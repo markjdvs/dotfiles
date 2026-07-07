@@ -44,6 +44,9 @@ _Avoid_: async run (ambiguous with other async work)
 **Iteration**:
 One stateless agent session inside the ralph loop, completing exactly one plan phase: sync, bootstrap, implement via TDD, verify behaviourally, tick the phase's checkboxes in the plan, commit, push. All continuity between iterations lives in the repo, none in the session.
 
+**Skill**:
+A reusable, cross-project procedure available to every session. Earns its place only when wired into the pipeline (like bootstrap and tdd in the ralph loop) or actively invoked by the human; anything else is pruned.
+
 **Bootstrap**:
 The idempotent step that makes a working copy runnable (deps installed, toolchain present, env stubbed). Runs at the start of every ralph iteration; prefers a project-provided entrypoint, else discovers from the repo.
 _Avoid_: init, setup (overloaded)
