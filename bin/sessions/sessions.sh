@@ -209,6 +209,27 @@ get_branch_list() {
   } | sort -u
 }
 
+# SIGTERM a process and all its descendants, children first. Lets each program
+# run its own shutdown: nvim writes its shada, `sst dev` reaps its workers.
+term_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    term_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+# Graceful Teardown: stop every pane's process tree before the session is
+# killed, so long-running trees (notably `sst dev`) don't orphan their children
+# and leak memory. kill-session's SIGHUP then mops up anything still alive.
+graceful_teardown() {
+  local session_name="$1" pane_pid
+  while IFS= read -r pane_pid; do
+    [[ -n "$pane_pid" ]] && term_tree "$pane_pid"
+  done < <(tmux list-panes -s -t "$session_name" -F '#{pane_pid}' 2>/dev/null || true)
+  sleep 2
+}
+
 cmd_finish_task() {
   local session_name
   session_name=$(tmux display-message -p '#{session_name}')
@@ -302,6 +323,7 @@ cmd_finish_task() {
     fi
   fi
 
+  graceful_teardown "$session_name"
   tmux switch-client -l 2>/dev/null || true
   tmux kill-session -t "$session_name" 2>/dev/null || true
 

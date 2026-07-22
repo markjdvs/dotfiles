@@ -34,6 +34,10 @@ _Avoid_: kickoff, dispatch
 The async→human transition. Graceful (`ralph pause` stop-file): the in-flight iteration completes, syncs, exits. Hard (Ctrl-C): the iteration is killed and dirty workspace state is wip-committed and pushed host-side. Either way the human resumes by pulling in the worktree.
 _Avoid_: takeover, stop (hard kill without sync)
 
+**Teardown**:
+The clean end of a human Task session: its running processes are gracefully stopped and reaped before the session is dismantled, leaving no orphaned processes and no corrupted editor state. Distinct from Pause (which halts the async ralph loop); Teardown ends a human-in-the-loop session and, when the task is finished, releases its worktree.
+_Avoid_: kill (the abrupt, orphan-leaving teardown this term is defined against)
+
 **Sync boundary**:
 Origin (the git remote) is the single canonical exchange point between worktree and workspace. Neither side reads the other's filesystem.
 
