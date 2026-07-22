@@ -16,7 +16,7 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
-alias development="export AWS_PROFILE=ww-development && aws sso login"
+alias development="export AWS_PROFILE=ww-development-power && aws sso login"
 alias prod="export AWS_PROFILE=ww-prod && aws sso login"
 alias production="export AWS_PROFILE=ww-production && aws sso login"
 alias proof="export AWS_PROFILE=ww-proof && aws sso login"
