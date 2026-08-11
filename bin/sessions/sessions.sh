@@ -328,10 +328,29 @@ cmd_finish_task() {
   tmux kill-session -t "$session_name" 2>/dev/null || true
 
   gum style "Removing worktree..."
-  git -C "$project_path" worktree remove "$worktree_path" --force 2>/dev/null || true
+  local remove_output
+  if ! remove_output=$(git -C "$project_path" worktree remove "$worktree_path" --force 2>&1); then
+    git -C "$project_path" worktree prune 2>/dev/null || true
+    remove_output=$(git -C "$project_path" worktree remove "$worktree_path" --force 2>&1) || true
+  fi
+
+  if [[ -e "$worktree_path" ]]; then
+    rm -rf "$worktree_path"
+    git -C "$project_path" worktree prune 2>/dev/null || true
+  fi
+
+  if [[ -e "$worktree_path" ]]; then
+    gum style --foreground 196 "Error: Session killed, but the worktree could not be removed."
+    gum style --faint "$remove_output"
+    gum style "Remove $worktree_path manually, then delete branch '$branch_name'. Branch left intact."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
 
   gum style "Deleting local branch..."
-  git -C "$project_path" branch -D "$branch_name" 2>/dev/null || true
+  if ! git -C "$project_path" branch -D "$branch_name" 2>&1; then
+    gum style --foreground 208 "Warning: Worktree removed, but branch '$branch_name' could not be deleted."
+  fi
 
   gum style --foreground 76 "✓ Task finished successfully."
 }
