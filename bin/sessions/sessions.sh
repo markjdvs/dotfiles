@@ -6,6 +6,8 @@ PROJECT_DIRS=(
   "$HOME/src/work"
 )
 
+TASKS_DIR="$HOME/src/tasks"
+
 get_active_sessions() {
   tmux list-sessions -F '#{session_name}' 2>/dev/null || true
 }
@@ -42,9 +44,6 @@ create_session() {
   local session_name="$1"
   local project_path="$2"
 
-  # Window indices instead of names — tmux misparses named targets
-  # when session names contain /
-
   local size_args=() client_width client_height
   client_width=$(tmux display-message -p '#{client_width}' 2>/dev/null || true)
   client_height=$(tmux display-message -p '#{client_height}' 2>/dev/null || true)
@@ -66,7 +65,9 @@ create_session() {
   tmux select-pane -t "$session_name:1.0" -T "run"
   tmux select-pane -t "$session_name:1.1" -T "test"
   tmux select-pane -t "$session_name:1.2" -T "review"
-  tmux send-keys -t "$session_name:1.2" "hunk diff --watch" Enter
+  if git -C "$project_path" rev-parse --git-dir >/dev/null 2>&1; then
+    tmux send-keys -t "$session_name:1.2" "hunk diff --watch" Enter
+  fi
 
   tmux select-window -t "$session_name:0"
   tmux select-pane -t "$session_name:0.0"
@@ -120,53 +121,10 @@ cmd_create_project() {
   tmux switch-client -t "$session_name"
 }
 
-cmd_create_task() {
-  local project_selection
-  project_selection=$(get_project_dirs | tv --input-header "Select project" --no-preview --no-remote)
-  [[ -z "$project_selection" ]] && exit 0
-
-  local project_path
-  project_path=$(resolve_project_path "$project_selection")
-  if [[ ! -d "$project_path" ]]; then
-    echo "Error: Project path not found: $project_path" >&2
-    exit 1
-  fi
-
-  if ! git -C "$project_path" fetch origin; then
-    gum style --foreground 208 "Warning: Failed to fetch from origin. Continuing with local refs only."
-  fi
-
-  local branches
-  branches=$(get_branch_list "$project_path")
-
-  local branch_name
-  branch_name=$(echo "$branches" | tv --input-header "Select or type branch" --no-preview --no-remote)
-
-  if [[ -z "$branch_name" ]]; then
-    branch_name=$(gum input --header "New branch name" --placeholder "feat/my-feature")
-    [[ -z "$branch_name" ]] && exit 0
-  fi
-
-  local worktree_path="$project_path/.worktrees/$branch_name"
-  local session_name="$project_selection/$branch_name"
-
-  local current_branch
-  current_branch=$(git -C "$project_path" branch --show-current 2>/dev/null || true)
-  if [[ "$current_branch" == "$branch_name" ]]; then
-    gum style --foreground 196 "Error: Branch '$branch_name' is already checked out in the main working tree."
-    gum style "Switch to the project session or use a different branch."
-    read -r -n 1 -p "Press any key to exit..."
-    exit 1
-  fi
-
-  if [[ -d "$worktree_path" ]]; then
-    gum style --foreground 196 "Error: Worktree already exists at: $worktree_path"
-    gum style "Use C-a t to switch to the existing task."
-    read -r -n 1 -p "Press any key to exit..."
-    exit 1
-  fi
-
-  mkdir -p "$(dirname "$worktree_path")"
+add_worktree() {
+  local project_path="$1"
+  local worktree_path="$2"
+  local branch_name="$3"
 
   local branch_exists_local branch_exists_remote
   branch_exists_local=$(git -C "$project_path" branch --list "$branch_name" | grep -c . || true)
@@ -181,7 +139,6 @@ cmd_create_task() {
     default_branch=$(git -C "$project_path" branch --show-current 2>/dev/null || true)
 
     if [[ "$default_branch" == "main" || "$default_branch" == "master" ]]; then
-      # Default branch is checked out — pull it forward in place
       git -C "$project_path" pull --ff-only origin "$default_branch" 2>/dev/null || true
     else
       default_branch="main"
@@ -193,8 +150,102 @@ cmd_create_task() {
 
     git -C "$project_path" worktree add "$worktree_path" -b "$branch_name" "$default_branch"
   fi
+}
 
-  create_session "$session_name" "$worktree_path"
+cmd_create_task() {
+  local raw_selection
+  raw_selection=$(get_project_dirs | tv --input-header "Select projects (Tab to mark, Enter to confirm)" --no-preview --no-remote) || true
+  [[ -z "$raw_selection" ]] && exit 0
+
+  local -a selections=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && selections+=("$line")
+  done <<<"$raw_selection"
+  [[ "${#selections[@]}" -eq 0 ]] && exit 0
+
+  local -a project_paths=() repo_names=()
+  local sel path name existing
+  for sel in "${selections[@]}"; do
+    path=$(resolve_project_path "$sel")
+    if [[ ! -d "$path" ]]; then
+      gum style --foreground 196 "Error: Project path not found: $path"
+      read -r -n 1 -p "Press any key to exit..."
+      exit 1
+    fi
+    name=$(basename "$path")
+    if [[ "${#repo_names[@]}" -gt 0 ]]; then
+      for existing in "${repo_names[@]}"; do
+        if [[ "$existing" == "$name" ]]; then
+          gum style --foreground 196 "Error: Two selected repos are both named '$name'."
+          gum style "Task dirs key on repo name, so this would collide. Pick only one."
+          read -r -n 1 -p "Press any key to exit..."
+          exit 1
+        fi
+      done
+    fi
+    project_paths+=("$path")
+    repo_names+=("$name")
+  done
+
+  local i
+  for i in "${!project_paths[@]}"; do
+    if ! git -C "${project_paths[$i]}" fetch origin; then
+      gum style --foreground 208 "Warning: Failed to fetch ${repo_names[$i]}. Continuing with local refs only."
+    fi
+  done
+
+  local branches
+  branches=$(for path in "${project_paths[@]}"; do get_branch_list "$path"; done | sort -u)
+
+  local branch_name
+  branch_name=$(echo "$branches" | tv --input-header "Select or type branch" --no-preview --no-remote)
+
+  if [[ -z "$branch_name" ]]; then
+    branch_name=$(gum input --header "New branch name" --placeholder "feat/my-feature")
+    [[ -z "$branch_name" ]] && exit 0
+  fi
+
+  local task_dir="$TASKS_DIR/$branch_name"
+  local session_name="tasks/$branch_name"
+
+  if [[ -d "$task_dir" ]]; then
+    gum style --foreground 196 "Error: Task already exists at: $task_dir"
+    gum style "Use C-a t to switch to the existing task."
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  for i in "${!project_paths[@]}"; do
+    local current_branch
+    current_branch=$(git -C "${project_paths[$i]}" branch --show-current 2>/dev/null || true)
+    if [[ "$current_branch" == "$branch_name" ]]; then
+      gum style --foreground 196 "Error: Branch '$branch_name' is already checked out in the main tree of ${repo_names[$i]}."
+      gum style "Switch to that project session or use a different branch."
+      read -r -n 1 -p "Press any key to exit..."
+      exit 1
+    fi
+  done
+
+  mkdir -p "$task_dir"
+
+  local created=0
+  for i in "${!project_paths[@]}"; do
+    gum style "Adding worktree: ${repo_names[$i]}"
+    if add_worktree "${project_paths[$i]}" "$task_dir/${repo_names[$i]}" "$branch_name"; then
+      created=$((created + 1))
+    else
+      gum style --foreground 208 "Warning: Failed to add worktree for ${repo_names[$i]}. Skipping."
+    fi
+  done
+
+  if [[ "$created" -eq 0 ]]; then
+    gum style --foreground 196 "Error: No worktrees could be created."
+    rmdir "$task_dir" 2>/dev/null || true
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  create_session "$session_name" "$task_dir"
   tmux switch-client -t "$session_name"
 }
 
@@ -209,8 +260,16 @@ get_branch_list() {
   } | sort -u
 }
 
-# SIGTERM a process and all its descendants, children first. Lets each program
-# run its own shutdown: nvim writes its shada, `sst dev` reaps its workers.
+origin_project_for_worktree() {
+  local worktree_path="$1" common
+  common=$(git -C "$worktree_path" rev-parse --git-common-dir 2>/dev/null) || return 1
+  case "$common" in
+  /*) : ;;
+  *) common="$worktree_path/$common" ;;
+  esac
+  dirname "$common"
+}
+
 term_tree() {
   local pid="$1" child
   for child in $(pgrep -P "$pid" 2>/dev/null); do
@@ -219,9 +278,6 @@ term_tree() {
   kill -TERM "$pid" 2>/dev/null || true
 }
 
-# Graceful Teardown: stop every pane's process tree before the session is
-# killed, so long-running trees (notably `sst dev`) don't orphan their children
-# and leak memory. kill-session's SIGHUP then mops up anything still alive.
 graceful_teardown() {
   local session_name="$1" pane_pid
   while IFS= read -r pane_pid; do
@@ -234,62 +290,66 @@ cmd_finish_task() {
   local session_name
   session_name=$(tmux display-message -p '#{session_name}')
 
-  local slash_count
-  slash_count=$(echo "$session_name" | tr -cd '/' | wc -c)
-  if [[ "$slash_count" -lt 2 ]]; then
+  if [[ "$session_name" != tasks/* ]]; then
     gum style --foreground 196 "Error: Not a task session."
-    gum style "finish-task can only be run from a task session (parent/project/branch)."
+    gum style "finish-task can only be run from a task session (tasks/<branch>)."
     read -r -n 1 -p "Press any key to exit..."
     exit 1
   fi
 
-  local parent project branch_name
-  parent="${session_name%%/*}"
-  local rest="${session_name#*/}"
-  project="${rest%%/*}"
-  branch_name="${rest#*/}"
+  local branch_name="${session_name#tasks/}"
+  local task_dir="$TASKS_DIR/$branch_name"
 
-  local project_path=""
-  for base_dir in "${PROJECT_DIRS[@]}"; do
-    if [[ "$(basename "$base_dir")" == "$parent" ]]; then
-      project_path="$base_dir/$project"
-      break
-    fi
+  if [[ ! -d "$task_dir" ]]; then
+    gum style --foreground 196 "Error: Task dir not found: $task_dir"
+    read -r -n 1 -p "Press any key to exit..."
+    exit 1
+  fi
+
+  local -a worktrees=() origins=()
+  local child origin
+  for child in "$task_dir"/*/; do
+    child="${child%/}"
+    [[ -e "$child/.git" ]] || continue
+    origin=$(origin_project_for_worktree "$child" || true)
+    worktrees+=("$child")
+    origins+=("$origin")
   done
 
-  if [[ -z "$project_path" || ! -d "$project_path" ]]; then
-    gum style --foreground 196 "Error: Could not resolve project path for: $session_name"
+  if [[ "${#worktrees[@]}" -eq 0 ]]; then
+    gum style --foreground 196 "Error: No worktrees found under $task_dir."
     read -r -n 1 -p "Press any key to exit..."
     exit 1
   fi
 
-  local worktree_path="$project_path/.worktrees/$branch_name"
-
-  if [[ ! -d "$worktree_path" ]]; then
-    gum style --foreground 196 "Error: Worktree not found: $worktree_path"
-    read -r -n 1 -p "Press any key to exit..."
-    exit 1
-  fi
-
-  if ! git -C "$worktree_path" diff --quiet 2>/dev/null ||
-    ! git -C "$worktree_path" diff --cached --quiet 2>/dev/null; then
-    gum style --foreground 196 "Error: Uncommitted changes detected in worktree."
+  local dirty=false
+  for child in "${worktrees[@]}"; do
+    if ! git -C "$child" diff --quiet 2>/dev/null ||
+      ! git -C "$child" diff --cached --quiet 2>/dev/null; then
+      gum style --foreground 196 "Uncommitted changes in $(basename "$child")."
+      dirty=true
+    fi
+  done
+  if [[ "$dirty" == true ]]; then
     gum style "Commit or stash your changes before finishing the task."
     read -r -n 1 -p "Press any key to exit..."
     exit 1
   fi
 
-  local untracked_count
-  untracked_count=$(git -C "$worktree_path" ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
-  if [[ "$untracked_count" -gt 0 ]]; then
-    gum style --foreground 208 "Warning: $untracked_count untracked file(s) in worktree."
+  local untracked_total=0 count
+  for child in "${worktrees[@]}"; do
+    count=$(git -C "$child" ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
+    untracked_total=$((untracked_total + count))
+  done
+  if [[ "$untracked_total" -gt 0 ]]; then
+    gum style --foreground 208 "Warning: $untracked_total untracked file(s) across worktrees."
     if ! gum confirm "Continue anyway?"; then
       exit 0
     fi
   fi
 
   local do_push=false
-  if gum confirm "Push branch '$branch_name' to remote before cleanup?"; then
+  if gum confirm "Push branch '$branch_name' to remote in all repos before cleanup?"; then
     do_push=true
   fi
 
@@ -297,11 +357,14 @@ cmd_finish_task() {
   gum style ""
   gum style "This will:"
   if [[ "$do_push" == true ]]; then
-    gum style "  • Push branch '$branch_name' to remote"
+    gum style "  • Push branch '$branch_name' in ${#worktrees[@]} repo(s)"
   fi
   gum style "  • Kill session '$session_name'"
-  gum style "  • Remove worktree at: $worktree_path"
-  gum style "  • Delete local branch '$branch_name'"
+  gum style "  • Remove ${#worktrees[@]} worktree(s) under: $task_dir"
+  gum style "  • Delete local branch '$branch_name' in each repo:"
+  for child in "${worktrees[@]}"; do
+    gum style "      - $(basename "$child")"
+  done
   gum style ""
   gum style --foreground 208 "Type the full session name to confirm:"
   gum style --faint "$session_name"
@@ -317,101 +380,103 @@ cmd_finish_task() {
   fi
 
   if [[ "$do_push" == true ]]; then
-    gum style "Pushing branch to remote..."
-    if ! git -C "$worktree_path" push origin "$branch_name" 2>&1; then
-      gum style --foreground 208 "Warning: Failed to push branch. Continuing with cleanup..."
-    fi
+    for child in "${worktrees[@]}"; do
+      gum style "Pushing $(basename "$child")..."
+      if ! git -C "$child" push origin "$branch_name" 2>&1; then
+        gum style --foreground 208 "Warning: Failed to push $(basename "$child"). Continuing..."
+      fi
+    done
   fi
 
   graceful_teardown "$session_name"
   tmux switch-client -l 2>/dev/null || true
   tmux kill-session -t "$session_name" 2>/dev/null || true
 
-  gum style "Removing worktree..."
-  local remove_output
-  if ! remove_output=$(git -C "$project_path" worktree remove "$worktree_path" --force 2>&1); then
-    git -C "$project_path" worktree prune 2>/dev/null || true
-    remove_output=$(git -C "$project_path" worktree remove "$worktree_path" --force 2>&1) || true
-  fi
+  local -a failed=()
+  local i name remove_output
+  for i in "${!worktrees[@]}"; do
+    child="${worktrees[$i]}"
+    origin="${origins[$i]}"
+    name=$(basename "$child")
 
-  if [[ -e "$worktree_path" ]]; then
-    rm -rf "$worktree_path"
-    git -C "$project_path" worktree prune 2>/dev/null || true
-  fi
+    if [[ -z "$origin" ]]; then
+      gum style --foreground 208 "Warning: Could not resolve origin repo for $name. Removing files only."
+      rm -rf "$child"
+      [[ -e "$child" ]] && failed+=("$name")
+      continue
+    fi
 
-  if [[ -e "$worktree_path" ]]; then
-    gum style --foreground 196 "Error: Session killed, but the worktree could not be removed."
-    gum style --faint "$remove_output"
-    gum style "Remove $worktree_path manually, then delete branch '$branch_name'. Branch left intact."
+    gum style "Removing worktree: $name"
+    if ! remove_output=$(git -C "$origin" worktree remove "$child" --force 2>&1); then
+      git -C "$origin" worktree prune 2>/dev/null || true
+      remove_output=$(git -C "$origin" worktree remove "$child" --force 2>&1) || true
+    fi
+
+    if [[ -e "$child" ]]; then
+      rm -rf "$child"
+      git -C "$origin" worktree prune 2>/dev/null || true
+    fi
+
+    if [[ -e "$child" ]]; then
+      gum style --foreground 196 "Error: Could not remove worktree $name."
+      gum style --faint "$remove_output"
+      failed+=("$name")
+      continue
+    fi
+
+    if ! git -C "$origin" branch -D "$branch_name" 2>&1; then
+      gum style --foreground 208 "Warning: Worktree $name removed, but branch could not be deleted in $(basename "$origin")."
+    fi
+  done
+
+  if [[ "${#failed[@]}" -gt 0 ]]; then
+    gum style --foreground 196 "Some worktrees could not be removed: ${failed[*]}"
+    gum style "Resolve manually under $task_dir. Branch(es) left intact."
     read -r -n 1 -p "Press any key to exit..."
     exit 1
   fi
 
-  gum style "Deleting local branch..."
-  if ! git -C "$project_path" branch -D "$branch_name" 2>&1; then
-    gum style --foreground 208 "Warning: Worktree removed, but branch '$branch_name' could not be deleted."
-  fi
+  rm -rf "$task_dir"
+  local parent
+  parent=$(dirname "$task_dir")
+  while [[ "$parent" == "$TASKS_DIR"/* ]]; do
+    rmdir "$parent" 2>/dev/null || break
+    parent=$(dirname "$parent")
+  done
 
   gum style --foreground 76 "✓ Task finished successfully."
 }
 
 get_active_task_sessions() {
-  local sessions
-  sessions=$(get_active_sessions)
-
-  if [[ -n "$sessions" ]]; then
-    while IFS= read -r session; do
-      local slash_count
-      slash_count=$(echo "$session" | tr -cd '/' | wc -c)
-      # Task sessions have 2+ slashes (parent/project/branch)
-      if [[ "$slash_count" -ge 2 ]]; then
-        echo "$session"
-      fi
-    done <<<"$sessions"
-  fi
+  get_active_sessions | grep '^tasks/' || true
 }
 
 get_orphaned_worktrees() {
-  local active_task_sessions
-  active_task_sessions=$(get_active_task_sessions)
+  [[ -d "$TASKS_DIR" ]] || return 0
 
-  for base_dir in "${PROJECT_DIRS[@]}"; do
-    if [[ ! -d "$base_dir" ]]; then
+  local active
+  active=$(get_active_task_sessions)
+
+  local base_dir project_dir wt branch session
+  {
+    for base_dir in "${PROJECT_DIRS[@]}"; do
+      [[ -d "$base_dir" ]] || continue
+      for project_dir in "$base_dir"/*/; do
+        [[ -e "${project_dir}.git" ]] || continue
+        git -C "$project_dir" worktree list --porcelain 2>/dev/null |
+          awk '/^worktree /{print $2}'
+      done
+    done
+  } | while IFS= read -r wt; do
+    [[ "$wt" == "$TASKS_DIR/"* ]] || continue
+    branch="$(dirname "$wt")"
+    branch="${branch#"$TASKS_DIR/"}"
+    echo "tasks/$branch"
+  done | sort -u | while IFS= read -r session; do
+    if [[ -n "$active" ]] && grep -qxF "$session" <<<"$active"; then
       continue
     fi
-    local parent
-    parent=$(basename "$base_dir")
-
-    for project_dir in "$base_dir"/*/; do
-      if [[ ! -d "$project_dir" ]]; then
-        continue
-      fi
-      local project_name
-      project_name=$(basename "$project_dir")
-      local worktrees_dir="$project_dir.worktrees"
-
-      if [[ ! -d "$worktrees_dir" ]]; then
-        continue
-      fi
-
-      # Worktrees can be nested (e.g. .worktrees/feat/PAC-123/)
-      while IFS= read -r worktree_path; do
-        if [[ ! -e "$worktree_path/.git" ]]; then
-          continue
-        fi
-
-        local branch_name
-        branch_name="${worktree_path#"$worktrees_dir/"}"
-
-        local session_name="$parent/$project_name/$branch_name"
-
-        if echo "$active_task_sessions" | grep -qxF "$session_name"; then
-          continue
-        fi
-
-        echo "$session_name"
-      done < <(find "$worktrees_dir" -type d -name ".git" 2>/dev/null | while read -r git_file; do dirname "$git_file"; done)
-    done
+    echo "$session"
   done
 }
 
@@ -422,21 +487,9 @@ build_task_candidates() {
   } | sort -u
 }
 
-resolve_task_worktree_path() {
+resolve_task_dir() {
   local session_name="$1"
-
-  local parent project branch_name
-  parent="${session_name%%/*}"
-  local rest="${session_name#*/}"
-  project="${rest%%/*}"
-  branch_name="${rest#*/}"
-
-  for base_dir in "${PROJECT_DIRS[@]}"; do
-    if [[ "$(basename "$base_dir")" == "$parent" ]]; then
-      echo "$base_dir/$project/.worktrees/$branch_name"
-      return
-    fi
-  done
+  echo "$TASKS_DIR/${session_name#tasks/}"
 }
 
 cmd_list_tasks() {
@@ -456,15 +509,14 @@ cmd_list_tasks() {
   if tmux has-session -t "$selection" 2>/dev/null; then
     tmux switch-client -t "$selection"
   else
-    # Orphaned worktree — recreate session at existing worktree path
-    local worktree_path
-    worktree_path=$(resolve_task_worktree_path "$selection")
+    local task_dir
+    task_dir=$(resolve_task_dir "$selection")
 
-    if [[ -d "$worktree_path" ]]; then
-      create_session "$selection" "$worktree_path"
+    if [[ -d "$task_dir" ]]; then
+      create_session "$selection" "$task_dir"
       tmux switch-client -t "$selection"
     else
-      gum style --foreground 196 "Error: Worktree path not found: $worktree_path"
+      gum style --foreground 196 "Error: Task dir not found: $task_dir"
       read -r -n 1 -p "Press any key to exit..."
       exit 1
     fi
@@ -519,8 +571,8 @@ Subcommands:
   list-projects   List and switch between project sessions (C-a p)
   create-project  Create a new project by cloning or initializing (C-a P)
   list-tasks      List and switch between task sessions (C-a t)
-  create-task     Create a new task with worktree and session (C-a T)
-  finish-task     Clean up current task: optionally push, remove worktree, kill session (C-a X)
+  create-task     Create a task across one or more repos on a shared branch (C-a T)
+  finish-task     Clean up current task: optionally push, remove worktrees, kill session (C-a X)
 
 EOF
   exit 1
