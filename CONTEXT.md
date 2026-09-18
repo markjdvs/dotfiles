@@ -5,11 +5,15 @@ Personal dotfiles powering a tmux/worktree-based development workflow where work
 ## Language
 
 **Task**:
-A unit of work identified by `parent/project/branch`, with its own git worktree and tmux session.
+A unit of work on a single branch, spanning one or more projects. Each spanned project gets its own git worktree; all of them live under one shared task dir and are driven by one tmux session (`tasks/<branch>`).
 _Avoid_: ticket, job
 
+**Task dir**:
+The shared parent directory of a task at `~/src/tasks/<branch>`, holding one Worktree subdirectory per project. Not itself a git repo — the repos are one layer down. Removed on Teardown when the task is finished.
+_Avoid_: worktree (the task dir contains worktrees; it is not one)
+
 **Worktree**:
-The human's checkout of a task branch at `$project/.worktrees/<branch>`, created by `sessions create-task`.
+The human's checkout of the task branch for a single project, at `~/src/tasks/<branch>/<repo>` under the task dir. One per project the task spans; created by `sessions create-task`.
 
 **Workspace**:
 The async agent's separate clone of the repo, mounted into its sandbox. Never the same directory as the worktree.

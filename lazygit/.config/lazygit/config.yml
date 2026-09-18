@@ -3,3 +3,5 @@ git:
     - pager: hunk pager --mode split
     - pager: delta --dark --side-by-side --paging=never
       colorArg: always
+os:
+  editPreset: "nvim"

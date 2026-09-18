@@ -24,5 +24,6 @@ brew "resvg"
 brew "imagemagick"
 brew "stow"
 brew "bats-core"
+brew "step"
 
 cask "cursor"
