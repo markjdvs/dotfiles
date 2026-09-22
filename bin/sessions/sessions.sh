@@ -40,9 +40,74 @@ resolve_project_path() {
   done
 }
 
+AGENT_CONTEXT_FILE="CLAUDE.md"
+
+DEV_PORT_BASE=3000
+DEV_PORT_RANGE=1000
+
+port_in_use() {
+  lsof -iTCP:"$1" -sTCP:LISTEN -nP >/dev/null 2>&1
+}
+
+dev_port() {
+  local key="$1" h port tries=0
+  h=$(printf '%s' "$key" | cksum | cut -d' ' -f1)
+  port=$((DEV_PORT_BASE + (h % DEV_PORT_RANGE)))
+  while port_in_use "$port" && ((tries < DEV_PORT_RANGE)); do
+    port=$((DEV_PORT_BASE + ((port - DEV_PORT_BASE + 1) % DEV_PORT_RANGE)))
+    tries=$((tries + 1))
+  done
+  echo "$port"
+}
+
+resolve_repos() {
+  local root="$1" child
+  repo_paths=()
+  repo_names=()
+  if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+    repo_paths=("$root")
+    repo_names=("$(basename "$root")")
+    return
+  fi
+  for child in "$root"/*/; do
+    child="${child%/}"
+    [[ -e "$child/.git" ]] || continue
+    repo_paths+=("$child")
+    repo_names+=("$(basename "$child")")
+  done
+  if [[ "${#repo_paths[@]}" -eq 0 ]]; then
+    repo_paths=("$root")
+    repo_names=("$(basename "$root")")
+  fi
+}
+
+write_agent_context() {
+  local dir="$1"
+  shift
+  local n
+  {
+    echo "# Task workspace"
+    echo
+    echo "This directory is a task dir, **not** a git repository. Each project"
+    echo "this task spans has its own git repository one level down:"
+    echo
+    for n in "$@"; do
+      echo "- \`$n/\`"
+    done
+    echo
+    echo "\`cd\` into one of these before running git, tests, or a dev server."
+  } >"$dir/$AGENT_CONTEXT_FILE"
+}
+
 create_session() {
   local session_name="$1"
   local project_path="$2"
+
+  local -a repo_paths repo_names
+  resolve_repos "$project_path"
+
+  local is_task=false
+  [[ "${repo_paths[0]}" != "$project_path" ]] && is_task=true
 
   local size_args=() client_width client_height
   client_width=$(tmux display-message -p '#{client_width}' 2>/dev/null || true)
@@ -54,20 +119,54 @@ create_session() {
   tmux new-session -d -s "$session_name" -c "$project_path" -n "editor" "${size_args[@]}"
   tmux send-keys -t "$session_name:0" "nvim ." Enter
   tmux split-window -h -l 25% -t "$session_name:0" -c "$project_path"
-  tmux send-keys -t "$session_name:0.1" "claude" Enter
   tmux select-pane -t "$session_name:0.0" -T "editor"
   tmux select-pane -t "$session_name:0.1" -T "agent"
 
-  tmux new-window -t "$session_name" -n "dev" -c "$project_path"
-  tmux split-window -h -t "$session_name:1" -c "$project_path"
-  tmux split-window -h -t "$session_name:1" -c "$project_path"
-  tmux select-layout -t "$session_name:1" even-horizontal
-  tmux select-pane -t "$session_name:1.0" -T "run"
-  tmux select-pane -t "$session_name:1.1" -T "test"
-  tmux select-pane -t "$session_name:1.2" -T "review"
-  if git -C "$project_path" rev-parse --git-dir >/dev/null 2>&1; then
-    tmux send-keys -t "$session_name:1.2" "hunk diff --watch" Enter
+  local claude_cmd="claude" p
+  if [[ "$is_task" == true ]]; then
+    write_agent_context "$project_path" "${repo_names[@]}"
+    for p in "${repo_paths[@]}"; do
+      claude_cmd+=" --add-dir $(printf '%q' "$p")"
+    done
   fi
+  tmux send-keys -t "$session_name:0.1" "$claude_cmd" Enter
+
+  local -a ports=() col_tops=()
+  local i port top prev
+  for i in "${!repo_paths[@]}"; do
+    ports+=("$(dev_port "$session_name/${repo_names[$i]}")")
+  done
+
+  top=$(tmux new-window -P -F '#{pane_id}' -t "$session_name" -n "dev" \
+    -c "${repo_paths[0]}" -e "DEV_PORT=${ports[0]}")
+  col_tops+=("$top")
+  prev="$top"
+  for ((i = 1; i < ${#repo_paths[@]}; i++)); do
+    top=$(tmux split-window -P -F '#{pane_id}' -h -t "$prev" \
+      -c "${repo_paths[$i]}" -e "DEV_PORT=${ports[$i]}")
+    col_tops+=("$top")
+    prev="$top"
+  done
+  tmux select-layout -t "$session_name:dev" even-horizontal
+
+  local -a title_fgs=(green magenta)
+  local lower review fg fmt pane
+  for i in "${!col_tops[@]}"; do
+    top="${col_tops[$i]}"
+    lower=$(tmux split-window -P -F '#{pane_id}' -v -l 50% -t "$top" \
+      -c "${repo_paths[$i]}" -e "DEV_PORT=${ports[$i]}")
+    review=$(tmux split-window -P -F '#{pane_id}' -h -l 50% -t "$lower" \
+      -c "${repo_paths[$i]}" -e "DEV_PORT=${ports[$i]}")
+    tmux select-pane -t "$top" -T "${repo_names[$i]} run :${ports[$i]}"
+    tmux select-pane -t "$lower" -T "${repo_names[$i]} test"
+    tmux select-pane -t "$review" -T "${repo_names[$i]} review"
+
+    fg="${title_fgs[$((i % ${#title_fgs[@]}))]}"
+    fmt=" #{?pane_active,#[bold]#[fg=${fg}],#[fg=colour240]}#{pane_title}#[default] "
+    for pane in "$top" "$lower" "$review"; do
+      tmux set-option -p -t "$pane" pane-border-format "$fmt"
+    done
+  done
 
   tmux select-window -t "$session_name:0"
   tmux select-pane -t "$session_name:0.0"
@@ -563,6 +662,75 @@ cmd_list_projects() {
   fi
 }
 
+bootstrap_worktree() {
+  local dir="$1" name="$2" ep target
+  gum style --bold "Bootstrapping $name..."
+
+  for ep in script/setup script/bootstrap scripts/setup.sh bin/setup; do
+    if [[ -x "$dir/$ep" ]]; then
+      (cd "$dir" && "./$ep")
+      return $?
+    fi
+  done
+
+  if [[ -f "$dir/Makefile" || -f "$dir/makefile" ]] &&
+    grep -qiE '^(setup|bootstrap):' "$dir"/[Mm]akefile 2>/dev/null; then
+    target=setup
+    grep -qiE '^setup:' "$dir"/[Mm]akefile 2>/dev/null || target=bootstrap
+    (cd "$dir" && make "$target")
+    return $?
+  fi
+
+  if [[ -f "$dir/pnpm-lock.yaml" ]]; then
+    (cd "$dir" && pnpm install --frozen-lockfile)
+  elif [[ -f "$dir/bun.lockb" || -f "$dir/bun.lock" ]]; then
+    (cd "$dir" && bun install --frozen-lockfile)
+  elif [[ -f "$dir/yarn.lock" ]]; then
+    (cd "$dir" && yarn install --immutable)
+  elif [[ -f "$dir/package-lock.json" ]]; then
+    (cd "$dir" && npm ci)
+  else
+    gum style --foreground 208 "  No entrypoint or lockfile in $name — skipping."
+    return 0
+  fi
+}
+
+cmd_bootstrap() {
+  local session_name
+  session_name=$(tmux display-message -p '#{session_name}' 2>/dev/null || true)
+  if [[ -z "$session_name" ]]; then
+    echo "Error: not inside a tmux session." >&2
+    exit 1
+  fi
+
+  local -a repo_paths repo_names
+  if [[ "$session_name" == tasks/* ]]; then
+    resolve_repos "$(resolve_task_dir "$session_name")"
+  else
+    resolve_repos "$(resolve_project_path "$session_name")"
+  fi
+
+  if [[ "${#repo_paths[@]}" -eq 0 ]]; then
+    gum style --foreground 196 "No repositories found for session $session_name."
+    exit 1
+  fi
+
+  local -a failed=()
+  local i
+  for i in "${!repo_paths[@]}"; do
+    if ! bootstrap_worktree "${repo_paths[$i]}" "${repo_names[$i]}"; then
+      failed+=("${repo_names[$i]}")
+    fi
+  done
+
+  if [[ "${#failed[@]}" -gt 0 ]]; then
+    gum style --foreground 196 "Bootstrap failed for: ${failed[*]}"
+    gum style --faint "See output above. Common cause: AWS SSO not logged in — log in, then re-run 'sessions bootstrap'."
+    exit 1
+  fi
+  gum style --foreground 76 "✓ Bootstrap complete for ${#repo_paths[@]} repo(s)."
+}
+
 usage() {
   cat <<EOF
 Usage: sessions <subcommand>
@@ -573,6 +741,7 @@ Subcommands:
   list-tasks      List and switch between task sessions (C-a t)
   create-task     Create a task across one or more repos on a shared branch (C-a T)
   finish-task     Clean up current task: optionally push, remove worktrees, kill session (C-a X)
+  bootstrap       Make the current session's repo(s) runnable (entrypoint or lockfile install)
 
 EOF
   exit 1
@@ -596,6 +765,9 @@ main() {
     ;;
   finish-task)
     cmd_finish_task
+    ;;
+  bootstrap)
+    cmd_bootstrap
     ;;
   *)
     usage
