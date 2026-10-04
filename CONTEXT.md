@@ -24,7 +24,7 @@ The Docker container (`docker sandbox`) in which the async agent runs, with the 
 _Avoid_: container (ambiguous)
 
 **Artefacts**:
-The PRD and plan markdown files in `.context/` on the task branch, produced by `/to-prd` and `/prd-to-plan`. They are the agent's task specification.
+The PRD and plan markdown files in `.context/` on the task branch, produced by `/write-prd` and `/prd-to-plan`. They are the agent's task specification.
 
 **Authoring**:
 The human-in-the-loop segment of the pipeline (grill → PRD → plan) that produces the artefacts. Only humans author; the ralph loop never invokes authoring skills, it only consumes their artefacts.
@@ -52,8 +52,48 @@ _Avoid_: async run (ambiguous with other async work)
 **Iteration**:
 One stateless agent session inside the ralph loop, completing exactly one plan phase: sync, bootstrap, implement via TDD, verify behaviourally, tick the phase's checkboxes in the plan, commit, push. All continuity between iterations lives in the repo, none in the session.
 
+**Harness**:
+An agent program that reads agent context and runs sessions — Claude Code, Cursor, Codex, Gemini CLI. Each has its own conventions for where it looks for context.
+_Avoid_: provider, tool, agent (an agent runs inside a harness)
+
+**Agent context**:
+Everything authored once and made available to every harness: skills, subagents, and instructions. Harness configuration (settings, hooks, MCP servers) is not agent context.
+_Avoid_: context (alone — collides with `.context/` artefacts), config
+
 **Skill**:
-A reusable, cross-project procedure available to every session. Earns its place only when wired into the pipeline (like bootstrap and tdd in the ralph loop) or actively invoked by the human; anything else is pruned.
+A reusable, cross-project procedure available to every session. Earns its place only when wired into the pipeline (like bootstrap and tdd in the ralph loop) or actively invoked by the human; anything else is pruned. Either an invoked skill or a reference skill.
+
+**Invoked skill**:
+A skill the human triggers by name as a command (`/write-skill`). Named imperatively, verb first.
+_Avoid_: command (a separate, legacy harness concept)
+
+**Transform skill**:
+An invoked skill that turns one named artefact into another, named `<input>-to-<output>` so the pipeline reads as a chain (`prd-to-plan`, `plan-to-tickets`). A skill whose only input is the conversation is not a transform and is named verb-first (`write-prd`).
+
+**Reference skill**:
+A skill the agent loads on its own when the situation matches (e.g. styling rules). Named for its subject; a noun is fine.
+
+**Subagent**:
+A named, specialised agent definition — its own prompt, and optionally restricted tools or model — that a session can delegate work to.
+_Avoid_: agent (ambiguous with the harness's main agent)
+
+**Model tier**:
+How much model capability a subagent needs, stated once and translated per harness. Expressed in Claude's family names (haiku, sonnet, opus) as the shared vocabulary, not as a choice of Claude itself.
+_Avoid_: model (names a specific harness's model)
+
+**Instructions**:
+Always-on guidance loaded into every session, authored once as AGENTS.md and presented to each harness under the name it expects (e.g. CLAUDE.md). Global or project-level.
+_Avoid_: rules, memory
+
+**Vendored**:
+Third-party agent context copied into dotfiles, then adapted and owned exactly like the user's own. Upstream is a source of ideas, not a dependency.
+
+**Third-party**:
+A skill used exactly as upstream publishes it: recorded in dotfiles pinned to an upstream commit, refreshed from upstream, never edited. Editing one first makes it vendored.
+_Avoid_: external, installed
+
+**Trial**:
+A third-party skill installed temporarily to evaluate it, kept visibly apart from everything else until it is promoted (to third-party or vendored) or discarded.
 
 **Bootstrap**:
 The idempotent step that makes a working copy runnable (deps installed, toolchain present, env stubbed). Runs at the start of every ralph iteration; prefers a project-provided entrypoint, else discovers from the repo.

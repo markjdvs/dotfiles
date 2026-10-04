@@ -23,6 +23,7 @@ brew "gum"
 brew "resvg"
 brew "imagemagick"
 brew "stow"
+brew "skillshare"
 brew "bats-core"
 brew "step"
 

@@ -79,7 +79,7 @@ returns. Your job ends at a clean commit.
 # RULES
 
 - ONE phase per iteration, never more.
-- Never invoke authoring skills (grilling, PRD, or plan writing) — you
+- Never invoke authoring skills (grill, PRD, or plan writing) — you
   consume artefacts, you don't produce them.
 - Never leave work uncommitted at the end of the iteration.
 - If you are blocked (e.g. the environment cannot be made runnable), commit
