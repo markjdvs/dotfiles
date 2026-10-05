@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/runkids/skillshare/main/schemas/config.schema.json
+preserve_tilde_on_save: true
+mode: merge
+sources:
+  skills: ~/src/personal/dotfiles/agents/skills
+  agents: ~/src/personal/dotfiles/agents/subagents
+targets:
+  claude:
+    skills:
+      enabled: false
+    agents:
+      path: ~/.claude/agents
+  codex:
+    skills:
+      path: ~/.agents/skills
+extras:
+  - name: instructions
+    source: ~/src/personal/dotfiles/agents
+    file: AGENTS.md
+    targets:
+      - path: ~/.claude
+        as: CLAUDE.md
+      - path: ~/.codex

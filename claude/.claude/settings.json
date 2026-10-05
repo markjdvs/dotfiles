@@ -4,6 +4,9 @@
     "commit": "",
     "pr": ""
   },
+  "disableBundledSkills": true,
+  "disableWorkflows": true,
+  "enableArtifact": false,
   "hooks": {
     "PreToolUse": [
       {

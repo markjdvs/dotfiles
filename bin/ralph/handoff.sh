@@ -50,7 +50,7 @@ fi
 pairs=$(task_artefact_pairs)
 if [ -z "$pairs" ]; then
   echo "Error: branch '$branch' carries no PRD/plan artefact pair in .context/." >&2
-  echo "Author the task first (grill → /to-prd → /prd-to-plan) and commit the artefacts." >&2
+  echo "Author the task first (grill → /write-prd → /prd-to-plan) and commit the artefacts." >&2
   exit 1
 fi
 

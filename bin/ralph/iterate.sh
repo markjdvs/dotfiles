@@ -54,7 +54,7 @@ if [ -z "$prd" ] || [ -z "$plan" ]; then
 
   if [ "$pair_count" -eq 0 ]; then
     echo "Error: no PRD/plan artefact pair found in .context/ on branch '$branch'." >&2
-    echo "Author the task first (grill → /to-prd → /prd-to-plan) and commit the artefacts." >&2
+    echo "Author the task first (grill → /write-prd → /prd-to-plan) and commit the artefacts." >&2
     exit 1
   fi
 
