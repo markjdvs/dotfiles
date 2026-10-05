@@ -42,6 +42,18 @@ _Avoid_: takeover, stop (hard kill without sync)
 The clean end of a human Task session: its running processes are gracefully stopped and reaped before the session is dismantled, leaving no orphaned processes and no corrupted editor state. Distinct from Pause (which halts the async ralph loop); Teardown ends a human-in-the-loop session and, when the task is finished, releases its worktree.
 _Avoid_: kill (the abrupt, orphan-leaving teardown this term is defined against)
 
+**Distil**:
+The manual pass (invoked as `/distil`), run before `/clear`, that distils the current session into task-local documents — the Snapshot and the Friction log — so working context can be reset back under the token ceiling without losing what matters. Task sessions only; does not touch memory.
+_Avoid_: compaction (opaque, model-driven, in-context), Handoff (the human→async transition)
+
+**Snapshot**:
+A transient, curated capture of the session's working state — what's in flight, decisions made, next steps — written to `SNAPSHOT.md` in the task dir so a fresh session can resume after `/clear` without replaying the transcript. The task dir's `CLAUDE.md` points to it; it is read on demand, not auto-loaded. Discarded with the task.
+_Avoid_: Artefacts (the task spec the agent consumes), memory (durable, cross-session)
+
+**Friction log**:
+A task-local, durable capture of operational or structural issues hit during a session and the tooling they suggest (skills, commands, hooks, ways of working), kept in `FRICTION.md` in the task dir. The human harvests it into real tooling over time; Teardown warns before deleting it.
+_Avoid_: backlog (implies a formal, prioritised list rather than a scratch capture)
+
 **Sync boundary**:
 Origin (the git remote) is the single canonical exchange point between worktree and workspace. Neither side reads the other's filesystem.
 

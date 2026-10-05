@@ -1,0 +1,3 @@
+interface:
+  display_name: "Distil"
+  short_description: "Distil a session into a task-local snapshot + friction notes before /clear"

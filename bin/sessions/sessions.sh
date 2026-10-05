@@ -96,6 +96,8 @@ write_agent_context() {
     done
     echo
     echo "\`cd\` into one of these before running git, tests, or a dev server."
+    echo
+    echo "If \`SNAPSHOT.md\` exists in this directory, read it to resume the prior session's working state."
   } >"$dir/$AGENT_CONTEXT_FILE"
 }
 
@@ -443,6 +445,16 @@ cmd_finish_task() {
   if [[ "$untracked_total" -gt 0 ]]; then
     gum style --foreground 208 "Warning: $untracked_total untracked file(s) across worktrees."
     if ! gum confirm "Continue anyway?"; then
+      exit 0
+    fi
+  fi
+
+  if [[ -s "$task_dir/FRICTION.md" ]]; then
+    gum style --foreground 208 "This task has a FRICTION.md with un-harvested notes; teardown will delete it."
+    if gum confirm "View FRICTION.md now?"; then
+      gum pager <"$task_dir/FRICTION.md" 2>/dev/null || cat "$task_dir/FRICTION.md"
+    fi
+    if ! gum confirm "Continue without harvesting it?"; then
       exit 0
     fi
   fi
