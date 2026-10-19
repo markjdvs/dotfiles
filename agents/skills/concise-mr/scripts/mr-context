@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "mr-context: not inside a git repository; cd into the project first" >&2
+  exit 1
+fi
+
+root="$(git rev-parse --show-toplevel)"
+branch="$(git branch --show-current)"
+ticket="$(grep -o -E '[A-Z]+-[0-9]+' <<< "$branch" | head -1 || true)"
+
+if git rev-parse --verify -q origin/main >/dev/null; then
+  base="origin/main"
+elif git rev-parse --verify -q main >/dev/null; then
+  base="main"
+else
+  echo "mr-context: no main or origin/main to compare against" >&2
+  exit 1
+fi
+
+template="$root/.gitlab/merge_request_templates/default.md"
+
+gitlab_project_path() {
+  git remote get-url origin 2>/dev/null \
+    | sed -E -e 's#^(git@[^:]+:|[a-z]+://([^@/]+@)?[^/]+/)##' -e 's#\.git$##'
+}
+
+fetch_inherited_template() {
+  command -v glab >/dev/null || return 1
+  command -v jq >/dev/null || return 1
+  local project_path
+  project_path="$(gitlab_project_path)"
+  [ -n "$project_path" ] || return 1
+  glab api "projects/$(jq -rn --arg path "$project_path" '$path | @uri')/templates/merge_requests/default" 2>/dev/null \
+    | jq -er '.content'
+}
+
+echo "## Branch"
+echo "$branch"
+echo
+echo "## Ticket"
+echo "${ticket:-none found in branch name}"
+echo
+echo "## Base"
+echo "$base"
+echo
+echo "## Commits since base"
+git log --format='- %s' "$base..HEAD"
+echo
+echo "## Files changed"
+git diff --stat "$base...HEAD" | tail -n +1
+echo
+echo "## Template"
+if [ -f "$template" ]; then
+  echo "$template"
+  echo
+  cat "$template"
+elif inherited_template="$(fetch_inherited_template)"; then
+  echo "default, inherited from the GitLab group"
+  echo
+  echo "$inherited_template"
+else
+  echo "none in the repo or inherited from the GitLab group; use the sections Why, What, Demo, Testing, Missing"
+fi
