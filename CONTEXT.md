@@ -54,6 +54,14 @@ _Avoid_: Artefacts (the task spec the agent consumes), memory (durable, cross-se
 A task-local, durable capture of operational or structural issues hit during a session and the tooling they suggest (skills, commands, hooks, ways of working), kept in `FRICTION.md` in the task dir. The human harvests it into real tooling over time; Teardown warns before deleting it.
 _Avoid_: backlog (implies a formal, prioritised list rather than a scratch capture)
 
+**Harvest**:
+The manual pass (invoked as `/harvest`) over a task dir's Friction log and Snapshot that gives every entry a Disposition — tool, ticket, instruction or drop — and acts on it, stamping each entry so a later pass skips it. The inverse of Distil: Distil writes the task-local capture, Harvest turns it into durable value.
+_Avoid_: triage (implies ranking without acting), review
+
+**Disposition**:
+Where a harvested entry lands: a **tool** (agent context in dotfiles), a **ticket** (the issue tracker), an **instruction** (user-scoped AGENTS.md), or **drop**. Exactly one per entry.
+_Avoid_: outcome, action item
+
 **Sync boundary**:
 Origin (the git remote) is the single canonical exchange point between worktree and workspace. Neither side reads the other's filesystem.
 

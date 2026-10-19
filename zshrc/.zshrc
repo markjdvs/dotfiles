@@ -10,11 +10,12 @@ export NVM_DIR="$HOME/.nvm"
 
 ZSH_THEME="agnoster"
 
-eval $(thefuck --alias)
-
 plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
+
+eval "$(atuin init zsh)"
+eval "$(zoxide init zsh)"
 
 alias development="export AWS_PROFILE=ww-development-power && aws sso login"
 alias prod="export AWS_PROFILE=ww-prod && aws sso login"
@@ -25,9 +26,8 @@ alias staging="export AWS_PROFILE=ww-staging-view && aws sso login"
 
 alias gfp="git fetch && git pull"
 
-alias c="cursor ."
 alias d="cd $HOME/src/personal/dotfiles"
-alias z="source $HOME/.zshrc"
+alias zsource="source $HOME/.zshrc"
 
 alias nm_check="find . -name 'node_modules' -type d -prune"
 alias nm_delete="find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
