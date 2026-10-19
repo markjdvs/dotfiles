@@ -1,0 +1,17 @@
+auto_sync = false
+enter_accept = true
+secrets_filter = true
+
+## Never store commands matching these; agents and humans both run them.
+history_filter = [
+  "--secret-string",
+  "--secret-binary",
+  "--token(=| )",
+  "Authorization:",
+  "x-ww-authorization",
+  "aws secretsmanager put-secret-value",
+]
+
+[daemon]
+  enabled = true
+  autostart = true
