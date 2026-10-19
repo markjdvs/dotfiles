@@ -4,9 +4,8 @@
     "commit": "",
     "pr": ""
   },
+  "model": "opus",
   "disableBundledSkills": true,
-  "disableWorkflows": true,
-  "enableArtifact": false,
   "hooks": {
     "PreToolUse": [
       {
@@ -21,9 +20,53 @@
             "command": "$HOME/.claude/hooks/block-claude-attribution.sh"
           }
         ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "atuin hook claude-code"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "atuin hook claude-code"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "atuin hook claude-code"
+          }
+        ]
       }
     ]
   },
-  "enabledPlugins": {},
+  "disableWorkflows": true,
+  "enableArtifact": false,
+  "enabledPlugins": {
+    "figma@claude-plugins-official": true
+  },
+  "effortLevel": "medium",
+  "modelSettings": {
+    "claude-fable-5-1": {
+      "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  },
   "theme": "dark-daltonized"
 }
