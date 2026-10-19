@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() { echo "usage: jira-create <project-key> <type> <draft.md>   (draft: first line '# <summary>', rest is the description)" >&2; exit 2; }
+[ $# -eq 3 ] || usage
+project="$1"; type="$2"; draft="$3"
+[ -f "$draft" ] || { echo "jira-create: draft $draft not found" >&2; exit 1; }
+
+command -v acli >/dev/null || { echo "jira-create: acli not installed; see https://developer.atlassian.com/cloud/acli/guides/quick-start-guide/" >&2; exit 1; }
+acli jira auth status >/dev/null 2>&1 || { echo "jira-create: acli not authenticated; run 'acli jira auth login' (classic token, see the atlassian-cli skill)" >&2; exit 1; }
+
+summary="$(sed -n '1{s/^# *//;p;}' "$draft")"
+[ -n "$summary" ] || { echo "jira-create: first line of $draft must be '# <summary>'" >&2; exit 1; }
+
+description="$(mktemp)"
+trap 'rm -f "$description"' EXIT
+tail -n +2 "$draft" | sed '1{/^$/d;}' > "$description"
+
+result="$(acli jira workitem create --project "$project" --type "$type" --summary "$summary" --description-file "$description" --json)"
+key="$(printf '%s' "$result" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("key") or d.get("id") or "")' 2>/dev/null || true)"
+
+if [ -n "$key" ]; then
+  echo "$key"
+else
+  echo "jira-create: created, but could not read a key from acli's output:" >&2
+  printf '%s\n' "$result" >&2
+  exit 1
+fi

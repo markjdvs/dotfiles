@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Lists every command run inside the task dir (or a given dir) and its immediate
+# subdirectories, from atuin, with its author, deduplicated and most repeated first.
+# Agents appear because `atuin hook install <agent>` records their tool calls.
+# Optional second argument narrows the author: '$all-user', '$all-agent', or a name.
+
+author="${2:-}"
+if [ $# -ge 1 ] && [ "$1" != "-" ]; then
+  root="$1"
+else
+  sn="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+  case "$sn" in
+    tasks/*) root="$HOME/src/tasks/${sn#tasks/}" ;;
+    *) echo "harvest-commands: not in a tmux task session; pass a directory" >&2; exit 1 ;;
+  esac
+fi
+[ -d "$root" ] || { echo "harvest-commands: $root is not a directory" >&2; exit 1; }
+command -v atuin >/dev/null || { echo "harvest-commands: atuin not installed (brew install atuin)" >&2; exit 1; }
+
+export ATUIN_SESSION="${ATUIN_SESSION:-$(atuin uuid)}"
+limit="${HARVEST_COMMANDS_LIMIT:-2000}"
+
+dirs=("$root")
+while IFS= read -r d; do dirs+=("$d"); done < <(find "$root" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name node_modules)
+
+{
+  for d in "${dirs[@]}"; do
+    atuin search --cwd "$d" --limit "$limit" ${author:+--author "$author"} --format '{time}	{author}	{command}' -- '' 2>/dev/null || true
+  done
+} | python3 -c '
+import sys, collections
+import re
+row_start = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\t[^\t]*\t")
+records = []
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if row_start.match(line):
+        records.append(line)
+    elif records:
+        records[-1] += "\n" + line
+seen = collections.OrderedDict()
+for rec in records:
+    t, author, cmd = rec.split("\t", 2)
+    cmd = cmd.strip()
+    if not cmd or cmd.startswith(("cd ", "ls", "clear", "z ")):
+        continue
+    e = seen.setdefault((author, cmd), [0, t])
+    e[0] += 1
+    if t > e[1]:
+        e[1] = t
+rows = sorted(seen.items(), key=lambda kv: (kv[0][0], -kv[1][0], kv[1][1]))
+if not rows:
+    print("no commands recorded here; if the agent'"'"'s commands are missing, run `atuin hook install claude-code`")
+for (author, cmd), (n, t) in rows:
+    first, *rest = cmd.split("\n")
+    more = f"  (+{len(rest)} lines)" if rest else ""
+    print(f"{author:12s} {n:3d}x  last {t[:16]}  {first}{more}")
+'

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() { echo "usage: harvest-mark <entry-number> \"<disposition>: <reference>\"" >&2; exit 2; }
+[ $# -eq 2 ] || usage
+case "$1" in ''|*[!0-9]*) usage ;; esac
+
+sn="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+case "$sn" in
+  tasks/*) friction="$HOME/src/tasks/${sn#tasks/}/FRICTION.md" ;;
+  *) echo "harvest-mark: not in a tmux task session" >&2; exit 1 ;;
+esac
+[ -f "$friction" ] || { echo "harvest-mark: $friction not found" >&2; exit 1; }
+
+python3 - "$friction" "$1" "$2" <<'EOF'
+import sys
+path, target, stamp = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+lines = open(path).read().split("\n")
+n = 0
+out = []
+i = 0
+found = False
+while i < len(lines):
+    line = lines[i]
+    out.append(line)
+    if line.lstrip().startswith("- **Friction:**"):
+        n += 1
+        if n == target:
+            found = True
+            indent = line[: len(line) - len(line.lstrip())] + "  "
+            nxt = lines[i + 1] if i + 1 < len(lines) else ""
+            if "**Harvested:**" in nxt:
+                out.append(f"{indent}→ **Harvested:** {stamp}")
+                i += 2
+                continue
+            out.append(f"{indent}→ **Harvested:** {stamp}")
+    i += 1
+if not found:
+    sys.exit(f"harvest-mark: FRICTION.md has {n} entries, no entry {target}")
+open(path, "w").write("\n".join(out))
+print(f"stamped entry {target}: {stamp}")
+EOF

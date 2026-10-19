@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sn="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+case "$sn" in
+  tasks/*) task_dir="$HOME/src/tasks/${sn#tasks/}" ;;
+  *)
+    echo "harvest-context: not in a tmux task session (session is '${sn:-none}'); harvest only runs in tasks/<branch>" >&2
+    exit 1
+    ;;
+esac
+
+[ -d "$task_dir" ] || { echo "harvest-context: task dir $task_dir does not exist" >&2; exit 1; }
+[ -f "$task_dir/FRICTION.md" ] || { echo "harvest-context: no FRICTION.md in $task_dir; run /distil first" >&2; exit 1; }
+
+echo "## Task dir"
+echo "$task_dir"
+echo
+
+echo "## Snapshot"
+if [ -f "$task_dir/SNAPSHOT.md" ]; then
+  cat "$task_dir/SNAPSHOT.md"
+else
+  echo "none"
+fi
+echo
+
+echo "## Friction entries"
+python3 - "$task_dir/FRICTION.md" <<'EOF'
+import re, sys
+text = open(sys.argv[1]).read()
+n = 0
+for line in text.splitlines():
+    if line.startswith("## "):
+        print(line)
+        continue
+    if line.lstrip().startswith("- **Friction:**"):
+        n += 1
+        print(f"{n}. {line.strip()[2:]}")
+    elif "**Harvested:**" in line:
+        print(f"   {line.strip()}")
+print()
+print(f"{n} entries; those followed by a Harvested line are done")
+EOF
+echo
+
+echo "## Other artefacts"
+find "$task_dir" -maxdepth 1 -type f ! -name CLAUDE.md ! -name SNAPSHOT.md ! -name FRICTION.md \
+  -exec stat -f '%z %Sm %N' -t '%Y-%m-%d' {} + 2>/dev/null \
+  | sort -k3 \
+  | while read -r size mtime path; do
+      name="$(basename "$path")"
+      case "$name" in
+        *.md) kind="document" ;;
+        *.log) kind="log" ;;
+        *.json|*.csv|*.yaml|*.yml) kind="data" ;;
+        *.sh|*.py) kind="script" ;;
+        *) kind="file" ;;
+      esac
+      printf '%-9s %6s bytes  %s  %s\n' "$kind" "$size" "$mtime" "$name"
+    done
+
+if [ -d "$task_dir/harvest/tickets" ]; then
+  echo
+  echo "## Ticket drafts from a previous harvest"
+  ls "$task_dir/harvest/tickets"
+fi
